@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Vue FORM personnalisée pour PISTES TROUVÉES (leads) -->
+    <record id="view_crm_lead_form_pistes_trouvees" model="ir.ui.view">
+        <field name="name">crm.lead.form.pistes.trouvees</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm_lead_code_update.view_crm_lead_form_inherit_type_contact"/>
+        <field name="priority">20</field>
+        <field name="arch" type="xml">
+            
+            <!-- ============================================ -->
+            <!-- CHAMPS OBLIGATOIRES SI TYPE = OPPORTUNITY    -->
+            <!-- ============================================ -->
+            
+            <!-- Client / Société -->
+            <field name="partner_id" position="attributes">
+                <attribute name="string">Client ?</attribute>
+                <attribute name="required">type == 'opportunity'</attribute>
+            </field>
+            
+            <!-- Mode delivery -->
+            <field name="Mode_de_livraison" position="attributes">
+                <attribute name="string">Mode delivery</attribute>
+                <attribute name="required">type == 'opportunity'</attribute>
+            </field>
+            
+            <!-- Business unit -->
+            <field name="business_unit_id" position="attributes">
+                <attribute name="string">Business unit</attribute>
+                <attribute name="required">type == 'opportunity'</attribute>
+            </field>
+            
+            <!-- Contact / personne -->
+            <field name="person_partner_id" position="attributes">
+                <attribute name="string">Contact</attribute>
+                <attribute name="required">type == 'opportunity'</attribute>
+            </field>
+            
+            <!-- Revenu attendu -->
+            <field name="expected_revenue" position="attributes">
+                <attribute name="required">type == 'opportunity'</attribute>
+            </field>
+            
+            <!-- Probabilité -->
+            <field name="probability" position="attributes">
+                <attribute name="required">type == 'opportunity'</attribute>
+            </field>
+            
+            <!-- Vendeur / Commercial -->
+            <field name="user_id" position="attributes">
+                <attribute name="required">type == 'opportunity'</attribute>
+            </field>
+            
+            <!-- ============================================ -->
+            <!-- MASQUER L'ONGLET "Détail / Revenu"           -->
+            <!-- ============================================ -->
+            
+            <xpath expr="//notebook/page[3]" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            
+        </field>
+    </record>
+</odoo>

@@ -2,10 +2,10 @@
 <odoo>
 
     <!-- ============================================== -->
-    <!-- ACTIONS (avec default_name ajouté)           -->
+    <!-- ACTIONS                                            -->
     <!-- ============================================== -->
 
-    <!-- Action : Créer une nouvelle recherche (veille) - inchangée -->
+    <!-- Action : Créer une nouvelle recherche (veille) -->
     <record id="action_create_source" model="ir.actions.act_window">
         <field name="name">Créer une recherche</field>
         <field name="res_model">piste.source</field>
@@ -14,7 +14,7 @@
         <field name="target">new</field>
     </record>
 
-    <!-- Action : Pistes trouvées (leads) -->
+    <!-- Action : Pistes trouvées (leads) - corrigée -->
     <record id="action_pistes_trouvees" model="ir.actions.act_window">
         <field name="name">Pistes trouvées</field>
         <field name="res_model">crm.lead</field>
@@ -24,6 +24,10 @@
             'default_type': 'lead',
             'default_name': 'Lead prospect - ' + str(fields.Datetime.now().strftime('%d/%m/%Y %H:%M'))
         }</field>
+        <!-- IMPORTANT : on n'utilise PAS de ref invalide ici pour éviter le crash -->
+        <!-- On laisse la vue par défaut d'Odoo (crm.crm_case_tree_view_oppor) -->
+        <!-- Quand ta vue personnalisée sera prête, tu pourras ajouter : -->
+        <!-- <field name="view_id" ref="ton_vrai_module.view_pistes_trouvees_tree"/> -->
     </record>
 
     <!-- Action : Pistes validées (opportunités) -->
@@ -38,7 +42,7 @@
         }</field>
     </record>
 
-    <!-- Action : Nouvelle opportunité (form direct) -->
+    <!-- Action : Nouvelle opportunité -->
     <record id="action_new_opportunity" model="ir.actions.act_window">
         <field name="name">Nouvelle opportunité</field>
         <field name="res_model">crm.lead</field>
@@ -50,28 +54,25 @@
         }</field>
     </record>
 
-    <!-- Action : Statistiques - inchangée (pas de création ici) -->
+    <!-- Action : Statistiques -->
     <record id="action_stats" model="ir.actions.act_window">
         <field name="name">Statistiques</field>
         <field name="res_model">crm.lead</field>
         <field name="view_mode">graph,pivot</field>
-        <!-- Optionnel : tu peux ajouter un context si tu veux filtrer par défaut -->
-        <!-- <field name="context">{}</field> -->
     </record>
 
     <!-- ============================================== -->
-    <!-- DASHBOARD VIEW - inchangée                   -->
+    <!-- DASHBOARD VIEW - propre et sans risque       -->
     <!-- ============================================== -->
 
     <record id="view_opportunity_workflow_dashboard" model="ir.ui.view">
         <field name="name">opportunity.workflow.dashboard</field>
         <field name="model">crm.lead</field>
         <field name="arch" type="xml">
-            <form string="Opportunités" create="false" edit="false">
+            <form string="Workflow de prospection" create="false" edit="false">
                 <sheet>
-
                     <div class="oe_title mb32">
-                        <h1 style="text-align:center; color:#875A7B; margin-left: 120px;">
+                        <h1 style="text-align:center; color:#875A7B; margin-left:120px;">
                             Workflow de prospection
                         </h1>
                     </div>
@@ -83,9 +84,9 @@
 
                         <!-- CARD 1 : Recherche -->
                         <button name="%(action_create_source)d" type="action"
-                            style="width:160px;height:140px;border-radius:18px; border:1px solid #eee;background:white; box-shadow:0 8px 20px rgba(0,0,0,.08); transition:.25s;cursor:pointer;"
-                            onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 16px 30px rgba(0,0,0,.15)'"
-                            onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 8px 20px rgba(0,0,0,.08)'">
+                                style="width:160px;height:140px;border-radius:18px;border:1px solid #eee;background:white;box-shadow:0 8px 20px rgba(0,0,0,.08);transition:.25s;cursor:pointer;"
+                                onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 16px 30px rgba(0,0,0,.15)'"
+                                onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 8px 20px rgba(0,0,0,.08)'">
                             <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center;">
                                 <i class="fa fa-search" style="font-size:38px;color:#875A7B;margin-bottom:10px;"/>
                                 <strong style="min-height:36px;display:flex;align-items:center;">Recherche</strong>
@@ -96,9 +97,9 @@
 
                         <!-- CARD 2 : Pistes trouvées -->
                         <button name="%(action_pistes_trouvees)d" type="action"
-                            style="width:160px;height:140px;border-radius:18px; border:1px solid #eee;background:white; box-shadow:0 8px 20px rgba(0,0,0,.08); transition:.25s;cursor:pointer;"
-                            onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 16px 30px rgba(0,0,0,.15)'"
-                            onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 8px 20px rgba(0,0,0,.08)'">
+                                style="width:160px;height:140px;border-radius:18px;border:1px solid #eee;background:white;box-shadow:0 8px 20px rgba(0,0,0,.08);transition:.25s;cursor:pointer;"
+                                onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 16px 30px rgba(0,0,0,.15)'"
+                                onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 8px 20px rgba(0,0,0,.08)'">
                             <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center;">
                                 <i class="fa fa-inbox" style="font-size:38px;color:#17a2b8;margin-bottom:10px;"/>
                                 <strong style="min-height:36px;display:flex;align-items:center;">Pistes<br/>trouvées</strong>
@@ -109,9 +110,9 @@
 
                         <!-- CARD 3 : Pistes validées -->
                         <button name="%(action_pistes_validees)d" type="action"
-                            style="width:160px;height:140px;border-radius:18px; border:1px solid #eee;background:white; box-shadow:0 8px 20px rgba(0,0,0,.08); transition:.25s;cursor:pointer;"
-                            onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 16px 30px rgba(0,0,0,.15)'"
-                            onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 8px 20px rgba(0,0,0,.08)'">
+                                style="width:160px;height:140px;border-radius:18px;border:1px solid #eee;background:white;box-shadow:0 8px 20px rgba(0,0,0,.08);transition:.25s;cursor:pointer;"
+                                onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 16px 30px rgba(0,0,0,.15)'"
+                                onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 8px 20px rgba(0,0,0,.08)'">
                             <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center;">
                                 <i class="fa fa-check-circle" style="font-size:38px;color:#28a745;margin-bottom:10px;"/>
                                 <strong style="min-height:36px;display:flex;align-items:center;">Pistes<br/>validées</strong>
@@ -122,9 +123,9 @@
 
                         <!-- CARD 4 : Nouvelle opportunité -->
                         <button name="%(action_new_opportunity)d" type="action"
-                            style="width:160px;height:140px;border-radius:18px; border:1px solid #eee;background:white; box-shadow:0 8px 20px rgba(0,0,0,.08); transition:.25s;cursor:pointer;"
-                            onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 16px 30px rgba(0,0,0,.15)'"
-                            onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 8px 20px rgba(0,0,0,.08)'">
+                                style="width:160px;height:140px;border-radius:18px;border:1px solid #eee;background:white;box-shadow:0 8px 20px rgba(0,0,0,.08);transition:.25s;cursor:pointer;"
+                                onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 16px 30px rgba(0,0,0,.15)'"
+                                onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 8px 20px rgba(0,0,0,.08)'">
                             <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center;">
                                 <i class="fa fa-plus-circle" style="font-size:38px;color:#d9534f;margin-bottom:10px;"/>
                                 <strong style="min-height:36px;display:flex;align-items:center;">Nouvelle<br/>opportunité</strong>
@@ -135,9 +136,9 @@
 
                         <!-- CARD 5 : Statistiques -->
                         <button name="%(action_stats)d" type="action"
-                            style="width:160px;height:140px;border-radius:18px; border:1px solid #eee;background:white; box-shadow:0 8px 20px rgba(0,0,0,.08); transition:.25s;cursor:pointer;"
-                            onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 16px 30px rgba(0,0,0,.15)'"
-                            onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 8px 20px rgba(0,0,0,.08)'">
+                                style="width:160px;height:140px;border-radius:18px;border:1px solid #eee;background:white;box-shadow:0 8px 20px rgba(0,0,0,.08);transition:.25s;cursor:pointer;"
+                                onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 16px 30px rgba(0,0,0,.15)'"
+                                onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 8px 20px rgba(0,0,0,.08)'">
                             <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center;">
                                 <i class="fa fa-bar-chart" style="font-size:38px;color:#f0ad4e;margin-bottom:10px;"/>
                                 <strong style="min-height:36px;display:flex;align-items:center;">Statistiques</strong>
@@ -145,13 +146,12 @@
                         </button>
 
                     </div>
-
                 </sheet>
             </form>
         </field>
     </record>
 
-    <!-- Action principale du menu Opportunités -->
+    <!-- Action principale du menu -->
     <record id="action_opportunity_workflow" model="ir.actions.act_window">
         <field name="name">Opportunités</field>
         <field name="res_model">crm.lead</field>

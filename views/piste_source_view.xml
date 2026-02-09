@@ -131,17 +131,35 @@
                         </page>
 
                         <!-- OFFRES -->
-                        <page string="Offres trouvées">
-                            <field name="offer_ids">
-                                <tree>
-                                    <field name="name"/>
-                                    <field name="website"/>
-                                    <field name="budget"/>
-                                    <field name="status" widget="badge"/>
-                                    <field name="publication_date"/>
-                                </tree>
-                            </field>
-                        </page>
+                     
+<page string="Pistes trouvées">
+    <field name="offer_ids">
+        <tree string="Pistes trouvées depuis cette veille" create="false" delete="true" editable="bottom">
+            <!-- Colonnes alignées avec ton workflow et ta capture d'écran -->
+            <field name="name" string="Titre du projet"/>
+            <field name="website" string="Plateforme / Marché"/>
+            <field name="url" string="Lien" widget="url"/> <!-- cliquable -->
+            <field name="budget" string="Budget estimé"/>
+            <field name="publication_date" string="Date publication"/>
+            <field name="scraped_date" string="Date détection"/>
+            <field name="status" widget="badge" 
+                   decoration-info="status == 'new'"
+                   decoration-success="status == 'qualified'"
+                   decoration-warning="status == 'read'"
+                   decoration-danger="status in ('ignored', 'converted')"/>
+            <field name="lead_id" string="Piste CRM créée" optional="show"/>
+            <field name="notes" string="Notes" optional="hide"/>
+
+            <!-- Bouton conversion direct dans la liste -->
+            <button name="convert_to_lead" 
+                    string="Créer piste" 
+                    type="object" 
+                    class="oe_highlight" 
+                    icon="fa-arrow-right"
+                    attrs="{'invisible': [('status', '=', 'converted')]}"/>
+        </tree>
+    </field>
+</page>
 
                     </notebook>
 
