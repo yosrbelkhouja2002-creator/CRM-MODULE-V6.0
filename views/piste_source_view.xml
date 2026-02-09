@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <record id="view_piste_source_form" model="ir.ui.view">
+        <field name="name">piste.source.form</field>
+        <field name="model">piste.source</field>
+        <field name="arch" type="xml">
+            <form string="Veille commerciale">
+                <sheet>
+
+                    <!-- BOUTONS -->
+                    <div class="oe_button_box" name="button_box">
+                        <button name="toggle_active" type="object" class="oe_stat_button" icon="fa-archive">
+                            <field name="active" widget="boolean_button" options="{'terminology': 'archive'}"/>
+                        </button>
+                        <button class="oe_stat_button" type="object" name="action_view_offers" icon="fa-search">
+                            <field name="offer_count" string="Offres" widget="statinfo"/>
+                        </button>
+                    </div>
+
+                    <!-- TITRE -->
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name"
+                                   string="Nom de la veille"
+                                   placeholder="Ex : Projets Odoo – Développement"/>
+                        </h1>
+                    </div>
+
+                    <!-- INFOS GÉNÉRALES -->
+                    <group>
+                        <field name="project_type" string="Type de projet"/>
+                    </group>
+                    <group>
+                        <field name="last_search_date" string="Dernière recherche" readonly="1"/>
+                    </group>
+
+                    <notebook>
+
+                        <!-- CONFIGURATION -->
+                        <page string="Configuration">
+                        <group>
+                            <group>
+                                <field name="description"
+                                       string="Description"
+                                       widget="text"
+                                       placeholder="Objectif de cette veille..."/>
+                            </group>
+
+                            <group>
+                                <field name="keywords_required_ids"
+                                       string="Mots-clés requis"
+                                       widget="many2many_tags"
+                                       placeholder="Sélectionnez ou ajoutez des mots-clés"/>
+                            </group>
+</group>
+
+<group>
+                            <group>
+                                <field name="geo_zones"
+                                       string="Zones géographiques ciblées"
+                                       widget="many2many_tags"
+                                       placeholder="Sélectionnez un ou plusieurs pays"/>
+                            </group>
+
+                            <group>
+                                <field name="creator_id"
+                                       string="Créé par"
+                                       options="{'no_create': False}"
+                                       placeholder="Sélectionnez ou créez un utilisateur"/>
+                            </group>
+                            </group>
+                        </page>
+
+                        <!-- PLATEFORMES -->
+                        <page string="Plateformes">
+                            <group>
+                                <group>
+                                    <field name="platform_marches_publics"/>
+                                    <field name="platform_francetenders"/>
+                                    <field name="platform_marchesonline"/>
+                                    <field name="platform_globaltenders"/>
+                                    <field name="platform_batieu"/>
+                                    <field name="platform_ted"/>
+                                </group>
+
+                                <group>
+                                    <field name="platform_emarches"/>
+                                    <field name="platform_appelaprojets"/>
+                                    <field name="platform_tenderimpulse"/>
+                                    <field name="platform_deepbloo"/>
+                                    <field name="platform_boamp"/>
+                                </group>
+                            </group>
+                        </page>
+
+                        <!-- AUTOMATISATION -->
+                        <page string="Automatisation">
+                            <group>
+                                <field name="automation_type"/>
+                            </group>
+
+                            <group invisible="automation_type == 'manual'">
+                                <field name="auto_frequency"/>
+                                <field name="auto_date"/>
+                                <field name="auto_time"/>
+                                <field name="auto_repeat"/>
+                            </group>
+                        </page>
+
+                        <!-- NOTIFICATIONS -->
+                        <page string="Informations supplémentaires">
+                            <group>
+                                <group>
+                                    <field name="notify_email"/>
+                                    <field name="notify_odoo"/>
+                                    <field name="notify_emails"
+                                           placeholder="email1@example.com, email2@example.com"/>
+                                    <field name="budget_min"/>
+                                    <field name="budget_max"/>
+                                </group>
+                                
+                                <group>    
+                                    <field name="duration_short"/>
+                                    <field name="duration_medium"/>
+                                    <field name="duration_long"/>
+                                    <field name="client_pme"/>
+                                    <field name="client_large"/>
+                                </group>
+                            </group>
+                        </page>
+
+                        <!-- OFFRES -->
+                        <page string="Offres trouvées">
+                            <field name="offer_ids">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="website"/>
+                                    <field name="budget"/>
+                                    <field name="status" widget="badge"/>
+                                    <field name="publication_date"/>
+                                </tree>
+                            </field>
+                        </page>
+
+                    </notebook>
+
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+</odoo>

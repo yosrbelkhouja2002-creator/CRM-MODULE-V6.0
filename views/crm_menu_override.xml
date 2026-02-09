@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    
+    <!-- Transformer le menu Leads en menu parent sans action -->
+    <record id="crm.crm_menu_leads" model="ir.ui.menu">
+        <field name="name">Leads</field>
+        <field name="action" eval="False"/>
+    </record>
+
+    <!-- Action pour afficher uniquement les Leads -->
+    <record id="action_crm_leads_only" model="ir.actions.act_window">
+        <field name="name">Leads</field>
+        <field name="res_model">crm.lead</field>
+        <field name="view_mode">tree,form,kanban,graph,pivot</field>
+        <field name="domain">[('type', '=', 'lead')]</field>
+        <field name="context">{'default_type': 'lead'}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Créer un nouveau lead
+            </p>
+        </field>
+    </record>
+
+    <!-- Sous-menu "Leads" -->
+    <record id="menu_crm_leads_submenu" model="ir.ui.menu">
+        <field name="name">Leads</field>
+        <field name="parent_id" ref="crm.crm_menu_leads"/>
+        <field name="action" ref="action_crm_leads_only"/>
+        <field name="sequence">1</field>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- OPPORTUNITÉS : Maintenant avec WORKFLOW        -->
+    <!-- ============================================== -->
+    
+    <!-- Sous-menu "Opportunités" avec le workflow -->
+    <record id="menu_crm_opportunities_submenu" model="ir.ui.menu">
+        <field name="name">Opportunités</field>
+        <field name="parent_id" ref="crm.crm_menu_leads"/>
+        <field name="action" ref="action_opportunity_workflow"/>
+        <field name="sequence">2</field>
+    </record>
+
+</odoo>
