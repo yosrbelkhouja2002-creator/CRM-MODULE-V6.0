@@ -6,15 +6,24 @@
         <field name="model">piste.source</field>
         <field name="arch" type="xml">
             <form string="Veille commerciale">
-                <sheet>
+       <header>
+                    
+                    <!-- Bouton PROD : Envoie vers N8N pour scraping réel -->
+                    <button name="action_run_scrape" 
+                            type="object" 
+                            string="Lancer scraping N8N" 
+                            class="btn-primary"
+                            help="Envoie la configuration à N8N pour scraping réel"/>
+                </header>
 
-                    <!-- BOUTONS -->
+                <sheet>
+                    <!-- Badge du nombre d'offres trouvées -->
                     <div class="oe_button_box" name="button_box">
-                        <button name="toggle_active" type="object" class="oe_stat_button" icon="fa-archive">
-                            <field name="active" widget="boolean_button" options="{'terminology': 'archive'}"/>
-                        </button>
-                        <button class="oe_stat_button" type="object" name="action_view_offers" icon="fa-search">
-                            <field name="offer_count" string="Offres" widget="statinfo"/>
+                        <button name="action_view_offers" 
+                                type="object" 
+                                class="oe_stat_button" 
+                                icon="fa-search">
+                            <field name="offer_count" widget="statinfo" string="Offres"/>
                         </button>
                     </div>
 
@@ -27,13 +36,6 @@
                         </h1>
                     </div>
 
-                    <!-- INFOS GÉNÉRALES -->
-                    <group>
-                        <field name="project_type" string="Type de projet"/>
-                    </group>
-                    <group>
-                        <field name="last_search_date" string="Dernière recherche" readonly="1"/>
-                    </group>
 
                     <notebook>
 
@@ -131,36 +133,31 @@
                         </page>
 
                         <!-- OFFRES -->
-                     
-<page string="Pistes trouvées">
-    <field name="offer_ids">
-        <tree string="Pistes trouvées depuis cette veille" create="false" delete="true" editable="bottom">
-            <!-- Colonnes alignées avec ton workflow et ta capture d'écran -->
-            <field name="name" string="Titre du projet"/>
-            <field name="website" string="Plateforme / Marché"/>
-            <field name="url" string="Lien" widget="url"/> <!-- cliquable -->
-            <field name="budget" string="Budget estimé"/>
-            <field name="publication_date" string="Date publication"/>
-            <field name="scraped_date" string="Date détection"/>
-            <field name="status" widget="badge" 
-                   decoration-info="status == 'new'"
-                   decoration-success="status == 'qualified'"
-                   decoration-warning="status == 'read'"
-                   decoration-danger="status in ('ignored', 'converted')"/>
-            <field name="lead_id" string="Piste CRM créée" optional="show"/>
-            <field name="notes" string="Notes" optional="hide"/>
+                      <!-- OFFRES -->
 
-            <!-- Bouton conversion direct dans la liste -->
-            <button name="convert_to_lead" 
-                    string="Créer piste" 
-                    type="object" 
-                    class="oe_highlight" 
-                    icon="fa-arrow-right"
-                    attrs="{'invisible': [('status', '=', 'converted')]}"/>
+                        <!-- OFFRES -->
+                        <!-- ONGLET : Offres trouvées -->
+<page string="Piste trouvées" name="offers">
+    <field name="offer_ids" nolabel="1">
+        <tree decoration-info="status=='new'" 
+              decoration-success="status=='qualified'"
+              decoration-muted="status=='ignored'">
+            
+            <field name="scraped_date" string="Détectée le"/>
+            <field name="name" string="Titre"/>
+            <field name="partner_id" string="Client" optional="show"/>
+            <field name="person_partner_id" string="Contact" optional="show"/>
+            <field name="Mode_de_livraison" string="Mode delivery" optional="hide"/>
+            <field name="business_unit_id" string="Business unit" optional="hide"/>
+            <field name="website" string="Plateforme"/>
+            <field name="budget" string="Budget"/>
+            <field name="publication_date" string="Publié le"/>
+            <field name="status" widget="badge"/>
+            <field name="source_id" string="Source" optional="hide"/>
+            
         </tree>
     </field>
 </page>
-
                     </notebook>
 
                 </sheet>

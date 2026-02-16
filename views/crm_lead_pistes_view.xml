@@ -8,54 +8,49 @@
         <field name="priority">20</field>
         <field name="arch" type="xml">
             
-            <!-- ============================================ -->
-            <!-- CHAMPS OBLIGATOIRES SI TYPE = OPPORTUNITY    -->
-            <!-- ============================================ -->
+            <!-- Champs obligatoires uniquement en opportunité -->
             
             <!-- Client / Société -->
-            <field name="partner_id" position="attributes">
-                <attribute name="string">Client ?</attribute>
-                <attribute name="required">type == 'opportunity'</attribute>
-            </field>
+            <xpath expr="//field[@name='partner_id']" position="attributes">
+                <attribute name="string">Client</attribute>
+                <attribute name="required" eval="type == 'opportunity'"/>
+            </xpath>
             
             <!-- Mode delivery -->
-            <field name="Mode_de_livraison" position="attributes">
+            <xpath expr="//field[@name='Mode_de_livraison']" position="attributes">
                 <attribute name="string">Mode delivery</attribute>
-                <attribute name="required">type == 'opportunity'</attribute>
-            </field>
+                <attribute name="required" eval="type == 'opportunity'"/>
+            </xpath>
             
             <!-- Business unit -->
-            <field name="business_unit_id" position="attributes">
+            <xpath expr="//field[@name='business_unit_id']" position="attributes">
                 <attribute name="string">Business unit</attribute>
-                <attribute name="required">type == 'opportunity'</attribute>
-            </field>
+                <attribute name="required" eval="type == 'opportunity'"/>
+            </xpath>
             
             <!-- Contact / personne -->
-            <field name="person_partner_id" position="attributes">
+            <xpath expr="//field[@name='person_partner_id']" position="attributes">
                 <attribute name="string">Contact</attribute>
-                <attribute name="required">type == 'opportunity'</attribute>
-            </field>
+                <attribute name="required" eval="type == 'opportunity'"/>
+            </xpath>
             
             <!-- Revenu attendu -->
-            <field name="expected_revenue" position="attributes">
-                <attribute name="required">type == 'opportunity'</attribute>
-            </field>
+            <xpath expr="//field[@name='expected_revenue']" position="attributes">
+                <attribute name="required" eval="type == 'opportunity'"/>
+            </xpath>
             
             <!-- Probabilité -->
-            <field name="probability" position="attributes">
-                <attribute name="required">type == 'opportunity'</attribute>
-            </field>
+            <xpath expr="//field[@name='probability']" position="attributes">
+                <attribute name="required" eval="type == 'opportunity'"/>
+            </xpath>
             
             <!-- Vendeur / Commercial -->
-            <field name="user_id" position="attributes">
-                <attribute name="required">type == 'opportunity'</attribute>
-            </field>
+            <xpath expr="//field[@name='user_id']" position="attributes">
+                <attribute name="required" eval="type == 'opportunity'"/>
+            </xpath>
             
-            <!-- ============================================ -->
-            <!-- MASQUER L'ONGLET "Détail / Revenu"           -->
-            <!-- ============================================ -->
-            
-            <xpath expr="//notebook/page[3]" position="attributes">
+            <!-- Masquer l'onglet "Détail / Revenu" pour les leads -->
+            <xpath expr="//notebook/page[position()=3]" position="attributes">
                 <attribute name="invisible">1</attribute>
             </xpath>
             

@@ -22,7 +22,6 @@
         <field name="domain">[('type','=','lead')]</field>
         <field name="context">{
             'default_type': 'lead',
-            'default_name': 'Lead prospect - ' + str(fields.Datetime.now().strftime('%d/%m/%Y %H:%M'))
         }</field>
         <!-- IMPORTANT : on n'utilise PAS de ref invalide ici pour éviter le crash -->
         <!-- On laisse la vue par défaut d'Odoo (crm.crm_case_tree_view_oppor) -->

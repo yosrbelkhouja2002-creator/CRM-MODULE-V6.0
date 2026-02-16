@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
-from odoo import models, fields, api # type: ignore
-from odoo.exceptions import ValidationError # type: ignore
+from odoo import models, fields, api  # type: ignore
+from odoo.exceptions import ValidationError  # type: ignore
+import requests
+import json
+import logging
+from datetime import datetime, timedelta
+import random
+
+_logger = logging.getLogger(__name__)
+
 
 # ================================
 # Modèle pour les mots-clés
@@ -23,13 +31,6 @@ class PisteSource(models.Model):
 
     # ===== IDENTIFICATION =====
     name = fields.Char(string="Nom de la veille", required=True)
-    project_type = fields.Selection([
-        ('odoo', 'Développement Odoo'),
-        ('web', 'Développement Web'),
-        ('mobile', 'Application mobile'),
-        ('data', 'Data / BI'),
-    ], string="Type de projet recherché", required=True)
-
     description = fields.Text(string="Description / Notes")
     active = fields.Boolean(string="Actif", default=True)
 
@@ -69,8 +70,8 @@ class PisteSource(models.Model):
 
     # ===== UTILISATEUR QUI CRÉE =====
     creator_id = fields.Many2one(
-        'res.users', 
-        string="Créé par", 
+        'res.users',
+        string="Créé par",
         default=lambda self: self.env.user,
         required=True
     )
@@ -128,7 +129,7 @@ class PisteSource(models.Model):
 
     # ===== VALIDATION =====
     @api.constrains(
-        'keywords_required_ids', 
+        'keywords_required_ids',
         'platform_marches_publics', 'platform_emarches', 'platform_francetenders',
         'platform_appelaprojets', 'platform_marchesonline', 'platform_tenderimpulse',
         'platform_globaltenders', 'platform_deepbloo', 'platform_batieu',
@@ -139,7 +140,7 @@ class PisteSource(models.Model):
         for record in self:
             # 1️⃣ Au moins un mot-clé obligatoire
             if not record.keywords_required_ids:
-                raise ValidationError("⚠️ Vous devez sélectionner au moins un mot-clé obligatoire.")
+                raise ValidationError("Vous devez sélectionner au moins un mot-clé obligatoire.")
 
             # 2️⃣ Au moins une plateforme
             platforms = [
@@ -156,18 +157,65 @@ class PisteSource(models.Model):
                 record.platform_ted
             ]
             if not any(platforms):
-                raise ValidationError(" Vous devez sélectionner au moins une plateforme.")
+                raise ValidationError("Vous devez sélectionner au moins une plateforme.")
 
             # 3️⃣ Validation automatisation si type = auto
             if record.automation_type == 'auto':
                 if not record.auto_frequency:
-                    raise ValidationError(" Vous devez choisir une fréquence pour l'automatisation.")
-                
+                    raise ValidationError("Vous devez choisir une fréquence pour l'automatisation.")
+
                 # Si fréquence personnalisée, tous les autres champs deviennent obligatoires
                 if record.auto_frequency == 'custom':
                     if not record.auto_date:
-                        raise ValidationError(" Vous devez choisir une date de début pour l'automatisation personnalisée.")
+                        raise ValidationError("Vous devez choisir une date de début pour l'automatisation personnalisée.")
                     if record.auto_time in (None, ''):
                         raise ValidationError("Vous devez choisir une heure pour l'automatisation personnalisée.")
                     if not record.auto_repeat:
-                        raise ValidationError(" Vous devez choisir la répétition pour l'automatisation personnalisée.")
+                        raise ValidationError("Vous devez choisir la répétition pour l'automatisation personnalisée.")
+
+
+
+    # ===== BOUTON POUR ENVOYER LA VEILLE À N8N =====
+    def action_run_scrape(self):
+        """
+        Bouton Odoo : envoie les données de la veille au webhook n8n
+        """
+        # 🎯 ÉTAPE 1 : URL du webhook N8N
+        n8n_webhook_url = "http://localhost:5678/webhook-test/piste-run"
+        
+        for source in self:
+            # 🎯 ÉTAPE 2 : Préparation du JSON à envoyer
+            payload = {
+                'id': source.id,                    # ID de la veille
+                'name': source.name,                # Ex: "Projets Odoo France"
+                'keywords_required': [              # Mots-clés sélectionnés
+                    kw.name for kw in source.keywords_required_ids
+                ],
+                'platforms': {                      # Plateformes cochées
+                    'marches_publics': source.platform_marches_publics,
+                    'emarches': source.platform_emarches,
+                    'boamp': source.platform_boamp,
+                    # ... toutes les plateformes
+                },
+                'budget_min': source.budget_min,    # Filtre budget
+                'budget_max': source.budget_max,
+                'geo_zones': [                      # Pays sélectionnés
+                    c.code for c in source.geo_zones
+                ],
+                'frequency': source.auto_frequency, # Fréquence (6h, 12h...)
+            }
+            
+            # 🎯 ÉTAPE 3 : Envoi HTTP POST vers N8N
+            try:
+                response = requests.post(
+                    n8n_webhook_url,                    # URL du webhook
+                    headers={'Content-Type': 'application/json'},
+                    data=json.dumps(payload),           # Données en JSON
+                    timeout=10                          # Max 10 secondes
+                )
+                # 🎯 ÉTAPE 4 : Log du succès
+                _logger.info("Scrape envoyé à n8n : %s -> Status %s", 
+                            source.name, response.status_code)
+            except Exception as e:
+                # 🎯 ÉTAPE 5 : Log de l'erreur
+                _logger.error("Erreur lors de l'envoi à n8n : %s", str(e))
