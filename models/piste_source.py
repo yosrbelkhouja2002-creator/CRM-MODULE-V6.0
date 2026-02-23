@@ -128,6 +128,7 @@ class PisteSource(models.Model):
         }
 
     # ===== VALIDATION =====
+    # ===== VALIDATION =====
     @api.constrains(
         'keywords_required_ids',
         'platform_marches_publics', 'platform_emarches', 'platform_francetenders',
@@ -136,86 +137,57 @@ class PisteSource(models.Model):
         'platform_boamp', 'platform_ted',
         'automation_type', 'auto_frequency', 'auto_date', 'auto_time', 'auto_repeat'
     )
-    def _check_required_fields(self):
-        for record in self:
-            # 1️⃣ Au moins un mot-clé obligatoire
-            if not record.keywords_required_ids:
-                raise ValidationError("Vous devez sélectionner au moins un mot-clé obligatoire.")
-
-            # 2️⃣ Au moins une plateforme
-            platforms = [
-                record.platform_marches_publics,
-                record.platform_emarches,
-                record.platform_francetenders,
-                record.platform_appelaprojets,
-                record.platform_marchesonline,
-                record.platform_tenderimpulse,
-                record.platform_globaltenders,
-                record.platform_deepbloo,
-                record.platform_batieu,
-                record.platform_boamp,
-                record.platform_ted
-            ]
-            if not any(platforms):
-                raise ValidationError("Vous devez sélectionner au moins une plateforme.")
-
-            # 3️⃣ Validation automatisation si type = auto
-            if record.automation_type == 'auto':
-                if not record.auto_frequency:
-                    raise ValidationError("Vous devez choisir une fréquence pour l'automatisation.")
-
-                # Si fréquence personnalisée, tous les autres champs deviennent obligatoires
-                if record.auto_frequency == 'custom':
-                    if not record.auto_date:
-                        raise ValidationError("Vous devez choisir une date de début pour l'automatisation personnalisée.")
-                    if record.auto_time in (None, ''):
-                        raise ValidationError("Vous devez choisir une heure pour l'automatisation personnalisée.")
-                    if not record.auto_repeat:
-                        raise ValidationError("Vous devez choisir la répétition pour l'automatisation personnalisée.")
-
-
-
-    # ===== BOUTON POUR ENVOYER LA VEILLE À N8N =====
     def action_run_scrape(self):
-        """
-        Bouton Odoo : envoie les données de la veille au webhook n8n
-        """
-        # 🎯 ÉTAPE 1 : URL du webhook N8N
+    # Sauvegarde automatique avant envoi
+        self.ensure_one()
+        
         n8n_webhook_url = "http://localhost:5678/webhook-test/piste-run"
         
         for source in self:
-            # 🎯 ÉTAPE 2 : Préparation du JSON à envoyer
             payload = {
-                'id': source.id,                    # ID de la veille
-                'name': source.name,                # Ex: "Projets Odoo France"
-                'keywords_required': [              # Mots-clés sélectionnés
-                    kw.name for kw in source.keywords_required_ids
-                ],
-                'platforms': {                      # Plateformes cochées
+                'id': source.id,
+                'name': source.name,
+                'keywords_required': [kw.name for kw in source.keywords_required_ids],
+                'platforms': {
                     'marches_publics': source.platform_marches_publics,
                     'emarches': source.platform_emarches,
                     'boamp': source.platform_boamp,
-                    # ... toutes les plateformes
+                    'francetenders': source.platform_francetenders,
+                    'marchesonline': source.platform_marchesonline,
+                    'globaltenders': source.platform_globaltenders,
+                    'batieu': source.platform_batieu,
+                    'ted': source.platform_ted,
+                    'appelaprojets': source.platform_appelaprojets,
+                    'tenderimpulse': source.platform_tenderimpulse,
+                    'deepbloo': source.platform_deepbloo,
                 },
-                'budget_min': source.budget_min,    # Filtre budget
+                'budget_min': source.budget_min,
                 'budget_max': source.budget_max,
-                'geo_zones': [                      # Pays sélectionnés
-                    c.code for c in source.geo_zones
-                ],
-                'frequency': source.auto_frequency, # Fréquence (6h, 12h...)
+                'geo_zones': [c.code for c in source.geo_zones],
+                'frequency': source.auto_frequency or '',
+                'auto_date': str(source.auto_date) if source.auto_date else '',
+                'auto_time': source.auto_time or 0,
+                'auto_repeat': source.auto_repeat or '',
+                'automation_type': source.automation_type,
+                'notify_email': source.notify_email,
+                'notify_odoo': source.notify_odoo,
+                'notify_emails': source.notify_emails or '',
+                'duration_short': source.duration_short,
+                'duration_medium': source.duration_medium,
+                'duration_long': source.duration_long,
+                'client_pme': source.client_pme,
+                'client_large': source.client_large,
+                'description': source.description or '',
+                'creator_id': source.creator_id.id if source.creator_id else None,
             }
             
-            # 🎯 ÉTAPE 3 : Envoi HTTP POST vers N8N
             try:
                 response = requests.post(
-                    n8n_webhook_url,                    # URL du webhook
+                    n8n_webhook_url,
                     headers={'Content-Type': 'application/json'},
-                    data=json.dumps(payload),           # Données en JSON
-                    timeout=10                          # Max 10 secondes
+                    data=json.dumps(payload),
+                    timeout=10
                 )
-                # 🎯 ÉTAPE 4 : Log du succès
-                _logger.info("Scrape envoyé à n8n : %s -> Status %s", 
-                            source.name, response.status_code)
+                _logger.info("Scrape envoyé : %s -> %s", source.name, response.status_code)
             except Exception as e:
-                # 🎯 ÉTAPE 5 : Log de l'erreur
-                _logger.error("Erreur lors de l'envoi à n8n : %s", str(e))
+                _logger.error("Erreur n8n : %s", str(e))

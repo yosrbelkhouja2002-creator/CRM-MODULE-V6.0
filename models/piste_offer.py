@@ -8,8 +8,7 @@ class PisteOffer(models.Model):
     _order = 'scraped_date desc'
     
     # ===== CHAMPS DE BASE =====
-    name = fields.Char(string='Titre du projet')  # ← Plus obligatoire
-    
+    name = fields.Char(string='Titre du projet')  
     # RELATION AVEC LA SOURCE
     source_id = fields.Many2one(
         'piste.source',
