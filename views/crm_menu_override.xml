@@ -34,11 +34,11 @@
     <!-- ============================================== -->
     
     <!-- Sous-menu "Opportunités" avec le workflow -->
-    <record id="menu_crm_opportunities_submenu" model="ir.ui.menu">
-        <field name="name">Opportunités</field>
-        <field name="parent_id" ref="crm.crm_menu_leads"/>
-        <field name="action" ref="action_opportunity_workflow"/>
-        <field name="sequence">2</field>
-    </record>
-
+   <!-- Sous-menu "Opportunités" avec le workflow -->
+<record id="menu_crm_opportunities_submenu" model="ir.ui.menu">
+    <field name="name">Veille commerciale</field>
+    <field name="parent_id" ref="crm.crm_menu_leads"/>
+    <field name="action" ref="action_opportunity_workflow"/>
+    <field name="sequence">2</field>
+</record>
 </odoo>

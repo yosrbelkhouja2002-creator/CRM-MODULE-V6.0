@@ -1,13 +1,51 @@
 # -*- coding: utf-8 -*-
 from odoo import models, fields, api  # type: ignore
-from odoo.exceptions import ValidationError  # type: ignore
+from odoo.exceptions import ValidationError
+import re
 import requests
 import json
 import logging
-from datetime import datetime, timedelta
-import random
 
 _logger = logging.getLogger(__name__)
+
+# Mapping région → codes pays
+REGION_COUNTRIES = {
+    'Europe': [
+        'FR', 'DE', 'ES', 'IT', 'PT', 'BE', 'NL', 'LU', 'CH', 'AT',
+        'PL', 'CZ', 'SK', 'HU', 'RO', 'BG', 'HR', 'SI', 'RS', 'GR',
+        'SE', 'NO', 'DK', 'FI', 'IE', 'GB', 'IS', 'LT', 'LV', 'EE',
+        'AL', 'BA', 'ME', 'MK', 'MD', 'UA', 'BY', 'RU', 'TR', 'CY',
+        'MT', 'LI', 'MC', 'SM', 'VA', 'AD',
+    ],
+    'Africa': [
+        'MA', 'DZ', 'TN', 'LY', 'EG', 'SD', 'ET', 'NG', 'GH', 'CI',
+        'SN', 'CM', 'KE', 'TZ', 'UG', 'RW', 'ZA', 'ZW', 'ZM', 'AO',
+        'MZ', 'MG', 'MU', 'CD', 'CG', 'GA', 'BJ', 'TG', 'BF', 'ML',
+        'NE', 'TD', 'MR', 'SO', 'DJ', 'ER', 'SS', 'CF', 'GN', 'GW',
+        'SL', 'LR', 'GM', 'CV', 'ST', 'GQ', 'BI', 'MW', 'LS', 'SZ',
+        'NA', 'BW', 'KM', 'SC',
+    ],
+    'America': [
+        'US', 'CA', 'MX', 'BR', 'AR', 'CL', 'CO', 'PE', 'VE', 'EC',
+        'BO', 'PY', 'UY', 'GY', 'SR', 'GT', 'HN', 'SV', 'NI', 'CR',
+        'PA', 'CU', 'DO', 'HT', 'JM', 'TT', 'BB', 'LC', 'VC', 'GD',
+        'AG', 'DM', 'KN', 'BS', 'BZ',
+    ],
+    'Asia': [
+        'CN', 'JP', 'KR', 'IN', 'PK', 'BD', 'LK', 'NP', 'MM', 'TH',
+        'VN', 'KH', 'LA', 'MY', 'SG', 'ID', 'PH', 'TW', 'HK', 'MO',
+        'MN', 'KZ', 'UZ', 'TM', 'KG', 'TJ', 'AF', 'AZ', 'GE', 'AM',
+    ],
+    'Oceania': [
+        'AU', 'NZ', 'PG', 'FJ', 'SB', 'VU', 'WS', 'TO', 'KI', 'FM',
+        'MH', 'PW', 'NR', 'TV', 'CK', 'NU', 'WF', 'PF', 'NC',
+    ],
+    'Middle East': [
+        'SA', 'AE', 'QA', 'KW', 'BH', 'OM', 'YE', 'IQ', 'IR', 'SY',
+        'LB', 'JO', 'PS',
+    ],
+}
+
 
 
 # ================================
@@ -18,6 +56,17 @@ class PisteKeyword(models.Model):
     _description = 'Mot-clé'
 
     name = fields.Char(string="Mot-clé", required=True)
+
+
+# ================================
+# Modèle Région géographique
+# ================================
+class PisteRegion(models.Model):
+    _name = 'piste.region'
+    _description = 'Région géographique'
+
+    name = fields.Char(string="Région", required=True)
+    country_group_name = fields.Char(string="Nom du groupe Odoo")
 
 
 # ================================
@@ -66,45 +115,107 @@ class PisteSource(models.Model):
     client_large = fields.Boolean(string="Grande entreprise")
 
     # ===== LOCALISATION =====
-    geo_zones = fields.Many2many('res.country', string="Zones géographiques", required=True)
-
-    # ===== UTILISATEUR QUI CRÉE =====
-    creator_id = fields.Many2one(
-        'res.users',
-        string="Créé par",
-        default=lambda self: self.env.user,
-        required=True
+    geo_zone_region_ids = fields.Many2many(
+        'piste.region',
+        string="Régions ciblées"
     )
 
-    # ===== AUTOMATISATION =====
+    geo_zones = fields.Many2many(
+        'res.country',
+        'piste_source_country_rel',
+        'source_id',
+        'country_id',
+        string="Pays ciblés"
+    )
+
+    geo_zone_allowed_country_ids = fields.Many2many(
+        'res.country',
+        'piste_source_allowed_country_rel',
+        'source_id',
+        'country_id',
+        string="Pays autorisés (filtre)",
+        compute='_compute_geo_zone_allowed_country_ids',
+        store=True,
+    )
+
+    @api.depends('geo_zone_region_ids')
+    def _compute_geo_zone_allowed_country_ids(self):
+        all_countries = self.env['res.country'].search([])
+        for rec in self:
+            if not rec.geo_zone_region_ids:
+                rec.geo_zone_allowed_country_ids = all_countries
+                continue
+            region_names = rec.geo_zone_region_ids.mapped('country_group_name')
+            region_names = [r for r in region_names if r]
+            if not region_names:
+                rec.geo_zone_allowed_country_ids = all_countries
+                continue
+            all_codes = []
+            for rname in region_names:
+                all_codes += REGION_COUNTRIES.get(rname, [])
+            all_codes = list(set(all_codes))
+            rec.geo_zone_allowed_country_ids = self.env['res.country'].search([
+                ('code', 'in', all_codes)
+            ])
+
+    @api.onchange('geo_zone_region_ids')
+    def _onchange_geo_zone_region_ids(self):
+        self._compute_geo_zone_allowed_country_ids()
+        if self.geo_zones and self.geo_zone_allowed_country_ids:
+            self.geo_zones = self.geo_zones.filtered(
+                lambda c: c in self.geo_zone_allowed_country_ids
+            )
+        elif not self.geo_zone_allowed_country_ids:
+            self.geo_zones = [(5, 0, 0)]
+
+    # ===== PLANIFICATION =====
     automation_type = fields.Selection(
         [('manual', 'Manuel'), ('auto', 'Automatique')],
-        string="Type de veille",
+        string="Type de planification",
         required=True,
         default='manual'
     )
 
     auto_frequency = fields.Selection([
-        ('1h', 'Toutes les heures'),
-        ('6h', 'Toutes les 6 heures'),
-        ('12h', 'Toutes les 12 heures'),
-        ('24h', 'Une fois par jour'),
-        ('custom', 'Personnalisée'),
-    ], string="Fréquence automatique")
-
-    auto_date = fields.Date(string="Date de début")
-    auto_time = fields.Float(string="Heure (ex: 14.30)")
-    auto_repeat = fields.Selection([
         ('daily', 'Chaque jour'),
-        ('2days', 'Chaque 2 jours'),
         ('weekly', 'Chaque semaine'),
-        ('monthly', 'Chaque mois'),
-    ], string="Répétition")
+        ('custom', 'Personnalisée'),
+    ], string="Fréquence")
+
+    auto_date_start = fields.Date(string="Date de début")
+    auto_date_end = fields.Date(string="Date de fin")
+
+    # Selection avec clés string "HH:MM" — compatible avec l'ancienne colonne varchar en base
+    # Affichage identique au widget float_time (ex: 08:00)
+    auto_time = fields.Selection([
+        ('00:00', '00:00'), ('01:00', '01:00'), ('02:00', '02:00'),
+        ('03:00', '03:00'), ('04:00', '04:00'), ('05:00', '05:00'),
+        ('06:00', '06:00'), ('07:00', '07:00'), ('08:00', '08:00'),
+        ('09:00', '09:00'), ('10:00', '10:00'), ('11:00', '11:00'),
+        ('12:00', '12:00'), ('13:00', '13:00'), ('14:00', '14:00'),
+        ('15:00', '15:00'), ('16:00', '16:00'), ('17:00', '17:00'),
+        ('18:00', '18:00'), ('19:00', '19:00'), ('20:00', '20:00'),
+        ('21:00', '21:00'), ('22:00', '22:00'), ('23:00', '23:00'),
+    ], string="Heure d'exécution", default='08:00')
+
+    custom_interval = fields.Integer(string="Répéter tous les", default=1)
+    custom_interval_unit = fields.Selection([
+        ('hours', 'Heure(s)'),
+        ('days', 'Jour(s)'),
+        ('weeks', 'Semaine(s)'),
+        ('months', 'Mois'),
+    ], string="Unité", default='days')
 
     # ===== NOTIFICATIONS =====
     notify_email = fields.Boolean(string="Notification par email", default=False)
     notify_odoo = fields.Boolean(string="Notification Odoo", default=True)
-    notify_emails = fields.Text(string="Emails des destinataires")
+
+    notify_emails = fields.Text(
+        string="Emails des destinataires",
+        help="Saisissez une ou plusieurs adresses email, séparées par une virgule, "
+             "un point-virgule ou un retour à la ligne.\nEx : alice@example.com, bob@example.com"
+    )
+
 
     # ===== RELATION AVEC LES OFFRES =====
     offer_ids = fields.One2many('piste.offer', 'source_id', string='Offres trouvées')
@@ -112,6 +223,13 @@ class PisteSource(models.Model):
     last_search_date = fields.Datetime(string="Dernière recherche")
 
     # ===== MÉTHODES =====
+
+    def name_get(self):
+        result = []
+        for rec in self:
+            result.append((rec.id, f"Veille commerciale – {rec.name}"))
+        return result
+
     @api.depends('offer_ids')
     def _compute_offer_count(self):
         for source in self:
@@ -127,67 +245,60 @@ class PisteSource(models.Model):
             'context': {'default_source_id': self.id}
         }
 
-    # ===== VALIDATION =====
-    # ===== VALIDATION =====
-    @api.constrains(
-        'keywords_required_ids',
-        'platform_marches_publics', 'platform_emarches', 'platform_francetenders',
-        'platform_appelaprojets', 'platform_marchesonline', 'platform_tenderimpulse',
-        'platform_globaltenders', 'platform_deepbloo', 'platform_batieu',
-        'platform_boamp', 'platform_ted',
-        'automation_type', 'auto_frequency', 'auto_date', 'auto_time', 'auto_repeat'
-    )
+    # ===== SCRAPING N8N =====
+
     def action_run_scrape(self):
-    # Sauvegarde automatique avant envoi
         self.ensure_one()
-        
+
         n8n_webhook_url = "http://localhost:5678/webhook-test/piste-run"
-        
-        for source in self:
-            payload = {
-                'id': source.id,
-                'name': source.name,
-                'keywords_required': [kw.name for kw in source.keywords_required_ids],
-                'platforms': {
-                    'marches_publics': source.platform_marches_publics,
-                    'emarches': source.platform_emarches,
-                    'boamp': source.platform_boamp,
-                    'francetenders': source.platform_francetenders,
-                    'marchesonline': source.platform_marchesonline,
-                    'globaltenders': source.platform_globaltenders,
-                    'batieu': source.platform_batieu,
-                    'ted': source.platform_ted,
-                    'appelaprojets': source.platform_appelaprojets,
-                    'tenderimpulse': source.platform_tenderimpulse,
-                    'deepbloo': source.platform_deepbloo,
-                },
-                'budget_min': source.budget_min,
-                'budget_max': source.budget_max,
-                'geo_zones': [c.code for c in source.geo_zones],
-                'frequency': source.auto_frequency or '',
-                'auto_date': str(source.auto_date) if source.auto_date else '',
-                'auto_time': source.auto_time or 0,
-                'auto_repeat': source.auto_repeat or '',
-                'automation_type': source.automation_type,
-                'notify_email': source.notify_email,
-                'notify_odoo': source.notify_odoo,
-                'notify_emails': source.notify_emails or '',
-                'duration_short': source.duration_short,
-                'duration_medium': source.duration_medium,
-                'duration_long': source.duration_long,
-                'client_pme': source.client_pme,
-                'client_large': source.client_large,
-                'description': source.description or '',
-                'creator_id': source.creator_id.id if source.creator_id else None,
-            }
-            
-            try:
-                response = requests.post(
-                    n8n_webhook_url,
-                    headers={'Content-Type': 'application/json'},
-                    data=json.dumps(payload),
-                    timeout=10
-                )
-                _logger.info("Scrape envoyé : %s -> %s", source.name, response.status_code)
-            except Exception as e:
-                _logger.error("Erreur n8n : %s", str(e))
+
+        payload = {
+            'id': self.id,
+            'name': self.name,
+            'keywords_required': [kw.name for kw in self.keywords_required_ids],
+            'platforms': {
+                'marches_publics': self.platform_marches_publics,
+                'emarches': self.platform_emarches,
+                'boamp': self.platform_boamp,
+                'francetenders': self.platform_francetenders,
+                'marchesonline': self.platform_marchesonline,
+                'globaltenders': self.platform_globaltenders,
+                'batieu': self.platform_batieu,
+                'ted': self.platform_ted,
+                'appelaprojets': self.platform_appelaprojets,
+                'tenderimpulse': self.platform_tenderimpulse,
+                'deepbloo': self.platform_deepbloo,
+            },
+            'budget_min': self.budget_min,
+            'budget_max': self.budget_max,
+            'geo_zones': [c.code for c in self.geo_zones],
+            'geo_regions': [r.name for r in self.geo_zone_region_ids],
+            'frequency': self.auto_frequency or '',
+            'auto_date_start': str(self.auto_date_start) if self.auto_date_start else '',
+            'auto_date_end': str(self.auto_date_end) if self.auto_date_end else '',
+            'auto_time': self.auto_time or '',
+            'custom_interval': self.custom_interval or 1,
+            'custom_interval_unit': self.custom_interval_unit or '',
+            'automation_type': self.automation_type,
+            'notify_email': self.notify_email,
+            'notify_odoo': self.notify_odoo,
+            'notify_emails': self._parse_emails(self.notify_emails),
+            'duration_short': self.duration_short,
+            'duration_medium': self.duration_medium,
+            'duration_long': self.duration_long,
+            'client_pme': self.client_pme,
+            'client_large': self.client_large,
+            'description': self.description or '',
+            'creator_id': self.creator_id.id if self.creator_id else None,
+        }
+
+        try:
+            response = requests.post(
+                n8n_webhook_url,
+                headers={'Content-Type': 'application/json'},
+                data=json.dumps(payload),
+                timeout=10
+            )
+            _logger.info("Scrape envoyé : %s -> %s", self.name, response.status_code)
+        except Exception as e:
+            _logger.error("Erreur n8n : %s", str(e))

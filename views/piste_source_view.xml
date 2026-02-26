@@ -1,29 +1,135 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
 
+    <!-- ============================================== -->
+    <!-- DONNÉES : Régions géographiques               -->
+    <!-- ============================================== -->
+    <data noupdate="1">
+        <record id="region_europe" model="piste.region">
+            <field name="name">Europe</field>
+            <field name="country_group_name">Europe</field>
+        </record>
+        <record id="region_afrique" model="piste.region">
+            <field name="name">Afrique</field>
+            <field name="country_group_name">Africa</field>
+        </record>
+        <record id="region_amerique_nord" model="piste.region">
+            <field name="name">Amérique du Nord</field>
+            <field name="country_group_name">America</field>
+        </record>
+        <record id="region_amerique_sud" model="piste.region">
+            <field name="name">Amérique du Sud</field>
+            <field name="country_group_name">America</field>
+        </record>
+        <record id="region_asie" model="piste.region">
+            <field name="name">Asie</field>
+            <field name="country_group_name">Asia</field>
+        </record>
+        <record id="region_oceanie" model="piste.region">
+            <field name="name">Océanie</field>
+            <field name="country_group_name">Oceania</field>
+        </record>
+        <record id="region_moyen_orient" model="piste.region">
+            <field name="name">Moyen-Orient</field>
+            <field name="country_group_name">Middle East</field>
+        </record>
+        <record id="region_monde" model="piste.region">
+            <field name="name">Monde entier</field>
+            <field name="country_group_name"></field>
+        </record>
+    </data>
+
+    <!-- ============================================== -->
+    <!-- ACTIONS                                        -->
+    <!-- ============================================== -->
+
+    <record id="action_pistes_trouvees" model="ir.actions.act_window">
+        <field name="name">Pistes trouvées</field>
+        <field name="res_model">crm.lead</field>
+        <field name="view_mode">tree,form,kanban</field>
+        <field name="domain">[('type','=','lead')]</field>
+        <field name="context">{'default_type': 'lead'}</field>
+    </record>
+
+    <record id="action_pistes_validees" model="ir.actions.act_window">
+        <field name="name">Pistes validées</field>
+        <field name="res_model">crm.lead</field>
+        <field name="view_mode">tree,form,kanban</field>
+        <field name="domain">[('type','=','opportunity')]</field>
+        <field name="context">{'default_type': 'opportunity'}</field>
+    </record>
+
+    <record id="action_new_opportunity" model="ir.actions.act_window">
+        <field name="name">Nouvelle opportunité</field>
+        <field name="res_model">crm.lead</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{'default_type': 'opportunity'}</field>
+    </record>
+
+    <record id="action_stats" model="ir.actions.act_window">
+        <field name="name">Statistiques</field>
+        <field name="res_model">crm.lead</field>
+        <field name="view_mode">graph,pivot</field>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- VUE PRINCIPALE                                 -->
+    <!-- ============================================== -->
+
     <record id="view_piste_source_form" model="ir.ui.view">
         <field name="name">piste.source.form</field>
         <field name="model">piste.source</field>
         <field name="arch" type="xml">
             <form string="Veille commerciale">
-       <header>
-                    
-                    <!-- Bouton PROD : Envoie vers N8N pour scraping réel -->
-                    <button name="action_run_scrape" 
-                            type="object" 
-                            string="Lancer scraping N8N" 
+                <header>
+                    <button name="action_run_scrape"
+                            type="object"
+                            string="Lancer scraping N8N"
                             class="btn-primary"
                             help="Envoie la configuration à N8N pour scraping réel"/>
                 </header>
 
                 <sheet>
-                    <!-- Badge du nombre d'offres trouvées -->
+                    <!-- SMART BUTTONS -->
                     <div class="oe_button_box" name="button_box">
-                        <button name="action_view_offers" 
-                                type="object" 
-                                class="oe_stat_button" 
+                        <button name="action_view_offers"
+                                type="object"
+                                class="oe_stat_button"
                                 icon="fa-search">
                             <field name="offer_count" widget="statinfo" string="Offres"/>
+                        </button>
+                        <button name="%(action_pistes_trouvees)d"
+                                type="action"
+                                class="oe_stat_button"
+                                icon="fa-inbox">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_text">Pistes trouvées</span>
+                            </div>
+                        </button>
+                        <button name="%(action_pistes_validees)d"
+                                type="action"
+                                class="oe_stat_button"
+                                icon="fa-check-circle">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_text">Pistes validées</span>
+                            </div>
+                        </button>
+                        <button name="%(action_new_opportunity)d"
+                                type="action"
+                                class="oe_stat_button"
+                                icon="fa-plus-circle">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_text">Nouvelle opportunité</span>
+                            </div>
+                        </button>
+                        <button name="%(action_stats)d"
+                                type="action"
+                                class="oe_stat_button"
+                                icon="fa-bar-chart">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_text">Statistiques</span>
+                            </div>
                         </button>
                     </div>
 
@@ -36,43 +142,46 @@
                         </h1>
                     </div>
 
-
-                    <notebook>
-
-                        <!-- CONFIGURATION -->
-                        <page string="Configuration">
+                    <!-- ============================================== -->
+                    <!-- CONFIGURATION — EN DEHORS DU NOTEBOOK          -->
+                    <!-- ============================================== -->
+                    <group>
                         <group>
-                            <group>
-                                <field name="description"
-                                       string="Description"
-                                       widget="text"
-                                       placeholder="Objectif de cette veille..."/>
-                            </group>
+                            <field name="description"
+                                   string="Description"
+                                   widget="text"
+                                   placeholder="Objectif de cette veille..."/>
+                        </group>
+                        <group>
+                            <field name="keywords_required_ids"
+                                   string="Mots-clés requis"
+                                   widget="many2many_tags"
+                                   placeholder="Sélectionnez ou ajoutez des mots-clés"/>
+                        </group>
+                    </group>
 
-                            <group>
-                                <field name="keywords_required_ids"
-                                       string="Mots-clés requis"
-                                       widget="many2many_tags"
-                                       placeholder="Sélectionnez ou ajoutez des mots-clés"/>
-                            </group>
-</group>
+                    <group>
+                        <group>
+                            <field name="geo_zone_region_ids"
+                                   string="Régions ciblées"
+                                   widget="many2many_tags"
+                                   placeholder="Sélectionnez une ou plusieurs régions"/>
+                        </group>
+                        <group>
+                            <field name="geo_zone_allowed_country_ids" invisible="1"/>
+                            <field name="geo_zones"
+                                   string="Pays ciblés"
+                                   widget="many2many_tags"
+                                   placeholder="Sélectionnez un ou plusieurs pays"
+                                   domain="[('id', 'in', geo_zone_allowed_country_ids)]"/>
+                        </group>
+                    </group>
 
-<group>
-                            <group>
-                                <field name="geo_zones"
-                                       string="Zones géographiques ciblées"
-                                       widget="many2many_tags"
-                                       placeholder="Sélectionnez un ou plusieurs pays"/>
-                            </group>
 
-                            <group>
-                                <field name="creator_id"
-                                       string="Créé par"
-                                       options="{'no_create': False}"
-                                       placeholder="Sélectionnez ou créez un utilisateur"/>
-                            </group>
-                            </group>
-                        </page>
+                    <!-- ============================================== -->
+                    <!-- NOTEBOOK — onglets secondaires                 -->
+                    <!-- ============================================== -->
+                    <notebook>
 
                         <!-- PLATEFORMES -->
                         <page string="Plateformes">
@@ -85,7 +194,6 @@
                                     <field name="platform_batieu"/>
                                     <field name="platform_ted"/>
                                 </group>
-
                                 <group>
                                     <field name="platform_emarches"/>
                                     <field name="platform_appelaprojets"/>
@@ -96,73 +204,68 @@
                             </group>
                         </page>
 
-                        <!-- AUTOMATISATION -->
-                        <page string="Automatisation">
+                        <!-- PLANIFICATION -->
+                        <page string="Planification">
+
                             <group>
-                                <field name="automation_type"/>
+                                <field name="automation_type" widget="radio"/>
                             </group>
 
                             <group invisible="automation_type == 'manual'">
-                                <field name="auto_frequency"/>
-                                <field name="auto_date"/>
-                                <field name="auto_time"/>
-                                <field name="auto_repeat"/>
+
+                                <group string="Fréquence d'exécution">
+                                    <field name="auto_frequency"/>
+                                    <!-- auto_time : liste déroulante HH:MM, masquée si unité = heures en mode custom -->
+                                    <field name="auto_time"
+                                           string="Heure d'exécution"
+                                           invisible="auto_frequency == 'custom' and custom_interval_unit == 'hours'"/>
+                                </group>
+
+                                <group string="Personnalisation"
+                                       invisible="auto_frequency != 'custom'">
+                                    <field name="custom_interval" string="Répéter tous les"/>
+                                    <field name="custom_interval_unit" string="Unité"/>
+                                </group>
+
+                                <group string="Période d'activité">
+                                    <field name="auto_date_start"/>
+                                    <field name="auto_date_end"/>
+                                </group>
+
                             </group>
                         </page>
 
-                        <!-- NOTIFICATIONS -->
+                        <!-- INFORMATIONS SUPPLÉMENTAIRES -->
                         <page string="Informations supplémentaires">
-                            <group>
-                                <group>
-                                    <field name="notify_email"/>
-                                    <field name="notify_odoo"/>
-                                    <field name="notify_emails"
-                                           placeholder="email1@example.com, email2@example.com"/>
-                                    <field name="budget_min"/>
-                                    <field name="budget_max"/>
-                                </group>
-                                
-                                <group>    
-                                    <field name="duration_short"/>
-                                    <field name="duration_medium"/>
-                                    <field name="duration_long"/>
-                                    <field name="client_pme"/>
-                                    <field name="client_large"/>
-                                </group>
-                            </group>
-                        </page>
-
-                        <!-- OFFRES -->
-                      <!-- OFFRES -->
-
-                        <!-- OFFRES -->
-                        <!-- ONGLET : Offres trouvées -->
-<page string="Piste trouvées" name="offers">
-    <field name="offer_ids" nolabel="1">
-        <tree decoration-info="status=='new'" 
-              decoration-success="status=='qualified'"
-              decoration-muted="status=='ignored'">
-            
-            <field name="scraped_date" string="Détectée le"/>
-            <field name="name" string="Titre"/>
-            <field name="partner_id" string="Client" optional="show"/>
-            <field name="person_partner_id" string="Contact" optional="show"/>
-            <field name="Mode_de_livraison" string="Mode delivery" optional="hide"/>
-            <field name="business_unit_id" string="Business unit" optional="hide"/>
-            <field name="website" string="Plateforme"/>
-            <field name="budget" string="Budget"/>
-            <field name="publication_date" string="Publié le"/>
-            <field name="status" widget="badge"/>
-            <field name="source_id" string="Source" optional="hide"/>
-            
-        </tree>
-    </field>
+    <group>
+        <group>
+            <field name="notify_email"/>
+            <field name="notify_odoo"/>
+            <field name="notify_emails"/>
+            <field name="budget_min"/>
+            <field name="budget_max"/>
+        </group>
+        <group>
+            <field name="duration_short"/>
+            <field name="duration_medium"/>
+            <field name="duration_long"/>
+            <field name="client_pme"/>
+            <field name="client_large"/>
+        </group>
+    </group>
 </page>
-                    </notebook>
 
+                    </notebook>
                 </sheet>
             </form>
         </field>
+    </record>
+
+    <!-- ACTION PRINCIPALE DU MENU -->
+    <record id="action_opportunity_workflow" model="ir.actions.act_window">
+        <field name="name">Veille commerciale</field>
+        <field name="res_model">piste.source</field>
+        <field name="view_mode">tree,form</field>
     </record>
 
 </odoo>
