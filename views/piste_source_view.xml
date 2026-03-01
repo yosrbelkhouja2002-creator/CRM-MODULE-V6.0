@@ -2,7 +2,7 @@
 <odoo>
 
     <!-- ============================================== -->
-    <!-- DONNÉES : Régions géographiques               -->
+    <!-- DONNÉES : Régions géographiques (noupdate)    -->
     <!-- ============================================== -->
     <data noupdate="1">
         <record id="region_europe" model="piste.region">
@@ -73,6 +73,31 @@
         <field name="view_mode">graph,pivot</field>
     </record>
 
+    <!-- Action : Gestion des mots-clés de veille -->
+    <record id="action_piste_keyword" model="ir.actions.act_window">
+        <field name="name">Mots-clés</field>
+        <field name="res_model">piste.keyword</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- Vue liste des mots-clés (éditable directement dans la liste) -->
+    <record id="view_piste_keyword_tree" model="ir.ui.view">
+        <field name="name">piste.keyword.tree</field>
+        <field name="model">piste.keyword</field>
+        <field name="arch" type="xml">
+            <tree editable="bottom">
+                <field name="name" string="Mot-clé"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Menu CRM > Configuration > Mots-clés de veille -->
+    <menuitem id="menu_piste_keyword"
+              name="Mots-clés de veille"
+              parent="crm.crm_menu_config"
+              action="action_piste_keyword"
+              sequence="99"/>
+
     <!-- ============================================== -->
     <!-- VUE PRINCIPALE                                 -->
     <!-- ============================================== -->
@@ -142,9 +167,7 @@
                         </h1>
                     </div>
 
-                    <!-- ============================================== -->
-                    <!-- CONFIGURATION — EN DEHORS DU NOTEBOOK          -->
-                    <!-- ============================================== -->
+                    <!-- CONFIGURATION PRINCIPALE -->
                     <group>
                         <group>
                             <field name="description"
@@ -168,6 +191,7 @@
                                    placeholder="Sélectionnez une ou plusieurs régions"/>
                         </group>
                         <group>
+                            <!-- Champ invisible requis pour le domain dynamique des pays -->
                             <field name="geo_zone_allowed_country_ids" invisible="1"/>
                             <field name="geo_zones"
                                    string="Pays ciblés"
@@ -177,10 +201,7 @@
                         </group>
                     </group>
 
-
-                    <!-- ============================================== -->
-                    <!-- NOTEBOOK — onglets secondaires                 -->
-                    <!-- ============================================== -->
+                    <!-- NOTEBOOK — onglets secondaires -->
                     <notebook>
 
                         <!-- PLATEFORMES -->
@@ -206,54 +227,53 @@
 
                         <!-- PLANIFICATION -->
                         <page string="Planification">
-
                             <group>
                                 <field name="automation_type" widget="radio"/>
                             </group>
-
                             <group invisible="automation_type == 'manual'">
-
                                 <group string="Fréquence d'exécution">
                                     <field name="auto_frequency"/>
-                                    <!-- auto_time : liste déroulante HH:MM, masquée si unité = heures en mode custom -->
+                                    <!-- Heure masquée si mode custom avec unité = heures -->
                                     <field name="auto_time"
                                            string="Heure d'exécution"
                                            invisible="auto_frequency == 'custom' and custom_interval_unit == 'hours'"/>
                                 </group>
-
                                 <group string="Personnalisation"
                                        invisible="auto_frequency != 'custom'">
                                     <field name="custom_interval" string="Répéter tous les"/>
                                     <field name="custom_interval_unit" string="Unité"/>
                                 </group>
-
                                 <group string="Période d'activité">
                                     <field name="auto_date_start"/>
                                     <field name="auto_date_end"/>
                                 </group>
-
                             </group>
                         </page>
 
                         <!-- INFORMATIONS SUPPLÉMENTAIRES -->
                         <page string="Informations supplémentaires">
-    <group>
-        <group>
-            <field name="notify_email"/>
-            <field name="notify_odoo"/>
-            <field name="notify_emails"/>
-            <field name="budget_min"/>
-            <field name="budget_max"/>
-        </group>
-        <group>
-            <field name="duration_short"/>
-            <field name="duration_medium"/>
-            <field name="duration_long"/>
-            <field name="client_pme"/>
-            <field name="client_large"/>
-        </group>
-    </group>
-</page>
+                            <group>
+                                <group>
+                                    <field name="notify_email"/>
+                                    <field name="notify_odoo"/>
+                                    <!-- Champ emails visible uniquement si notification email activée -->
+                                    <field name="notify_emails"
+                                           string="Emails des destinataires"
+                                           widget="text"
+                                           placeholder="alice@example.com&#10;bob@example.com"
+                                           invisible="not notify_email"/>
+                                    <field name="budget_min"/>
+                                    <field name="budget_max"/>
+                                </group>
+                                <group>
+                                    <field name="duration_short"/>
+                                    <field name="duration_medium"/>
+                                    <field name="duration_long"/>
+                                    <field name="client_pme"/>
+                                    <field name="client_large"/>
+                                </group>
+                            </group>
+                        </page>
 
                     </notebook>
                 </sheet>

@@ -8,7 +8,7 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
-# Mapping région → codes pays
+# Mapping région → codes pays ISO
 REGION_COUNTRIES = {
     'Europe': [
         'FR', 'DE', 'ES', 'IT', 'PT', 'BE', 'NL', 'LU', 'CH', 'AT',
@@ -46,6 +46,8 @@ REGION_COUNTRIES = {
     ],
 }
 
+# Regex de validation d'adresse email standard
+EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
 
 
 # ================================
@@ -84,11 +86,20 @@ class PisteSource(models.Model):
     active = fields.Boolean(string="Actif", default=True)
 
     # ===== MOTS-CLÉS =====
+    # required=True ne fonctionne pas sur Many2many → validation via @api.constrains
     keywords_required_ids = fields.Many2many(
         'piste.keyword',
-        string="Mots-clés obligatoires",
-        required=True
+        string="Mots-clés obligatoires"
     )
+
+    @api.constrains('keywords_required_ids')
+    def _check_keywords(self):
+        """Vérifie qu'au moins un mot-clé est renseigné avant la sauvegarde."""
+        for rec in self:
+            if not rec.keywords_required_ids:
+                raise ValidationError(
+                    "Veuillez renseigner au moins un mot-clé obligatoire."
+                )
 
     # ===== PLATEFORMES =====
     platform_marches_publics = fields.Boolean(string="Marchés Publics Gouv (Officiel)")
@@ -128,6 +139,8 @@ class PisteSource(models.Model):
         string="Pays ciblés"
     )
 
+    # Champ computed pour le domain dynamique dans la vue XML
+    # domain="[('id', 'in', geo_zone_allowed_country_ids)]"
     geo_zone_allowed_country_ids = fields.Many2many(
         'res.country',
         'piste_source_allowed_country_rel',
@@ -185,8 +198,7 @@ class PisteSource(models.Model):
     auto_date_start = fields.Date(string="Date de début")
     auto_date_end = fields.Date(string="Date de fin")
 
-    # Selection avec clés string "HH:MM" — compatible avec l'ancienne colonne varchar en base
-    # Affichage identique au widget float_time (ex: 08:00)
+    # Heure stockée en varchar HH:MM
     auto_time = fields.Selection([
         ('00:00', '00:00'), ('01:00', '01:00'), ('02:00', '02:00'),
         ('03:00', '03:00'), ('04:00', '04:00'), ('05:00', '05:00'),
@@ -216,15 +228,72 @@ class PisteSource(models.Model):
              "un point-virgule ou un retour à la ligne.\nEx : alice@example.com, bob@example.com"
     )
 
-
     # ===== RELATION AVEC LES OFFRES =====
     offer_ids = fields.One2many('piste.offer', 'source_id', string='Offres trouvées')
-    offer_count = fields.Integer(string="Nombre d'offres", compute='_compute_offer_count', store=True)
+    offer_count = fields.Integer(
+        string="Nombre d'offres",
+        compute='_compute_offer_count',
+        store=True
+    )
     last_search_date = fields.Datetime(string="Dernière recherche")
 
-    # ===== MÉTHODES =====
+    # ===== MÉTHODES UTILITAIRES =====
+
+    @staticmethod
+    def _parse_emails(raw):
+        """
+        Parse une chaîne d'emails séparés par virgule, point-virgule ou retour à la ligne.
+        Retourne une liste d'adresses nettoyées.
+        """
+        if not raw:
+            return []
+        normalized = re.sub(r'[;\n\r]+', ',', raw)
+        return [e.strip() for e in normalized.split(',') if e.strip()]
+
+    # ===== VALIDATION EMAIL =====
+
+    @api.constrains('notify_emails', 'notify_email')
+    def _check_notify_emails(self):
+        """Bloque la sauvegarde si notification email activée sans adresse valide."""
+        for rec in self:
+            if not rec.notify_email:
+                continue
+            if not rec.notify_emails:
+                raise ValidationError(
+                    "Vous avez activé la notification par email "
+                    "mais aucune adresse n'est renseignée."
+                )
+            emails = self._parse_emails(rec.notify_emails)
+            invalid = [e for e in emails if not EMAIL_REGEX.match(e)]
+            if invalid:
+                raise ValidationError(
+                    "Les adresses email suivantes sont invalides :\n"
+                    + "\n".join(f"  • {e}" for e in invalid)
+                )
+
+    @api.onchange('notify_emails')
+    def _onchange_notify_emails(self):
+        """Avertissement en temps réel si un email est mal formaté."""
+        if not self.notify_emails:
+            return
+        emails = self._parse_emails(self.notify_emails)
+        invalid = [e for e in emails if not EMAIL_REGEX.match(e)]
+        if invalid:
+            return {
+                'warning': {
+                    'title': "Adresse(s) email invalide(s)",
+                    'message': (
+                        "Les adresses suivantes semblent incorrectes :\n"
+                        + ", ".join(invalid)
+                        + "\n\nFormat attendu : nom@domaine.extension"
+                    )
+                }
+            }
+
+    # ===== MÉTHODES STANDARD =====
 
     def name_get(self):
+        """Affiche 'Veille commerciale – <nom>' dans le breadcrumb."""
         result = []
         for rec in self:
             result.append((rec.id, f"Veille commerciale – {rec.name}"))
@@ -232,10 +301,12 @@ class PisteSource(models.Model):
 
     @api.depends('offer_ids')
     def _compute_offer_count(self):
+        """Calcule le nombre d'offres pour le smart button."""
         for source in self:
             source.offer_count = len(source.offer_ids)
 
     def action_view_offers(self):
+        """Ouvre la liste des offres filtrées sur cette veille."""
         return {
             'type': 'ir.actions.act_window',
             'name': f'Offres - {self.name}',
@@ -248,8 +319,13 @@ class PisteSource(models.Model):
     # ===== SCRAPING N8N =====
 
     def action_run_scrape(self):
+        """
+        Envoie la configuration de la veille au webhook N8N.
+        ⚠️ Changer l'URL en /webhook/piste-run pour la production.
+        """
         self.ensure_one()
 
+        # ⚠️ Production : http://localhost:5678/webhook/piste-run
         n8n_webhook_url = "http://localhost:5678/webhook-test/piste-run"
 
         payload = {
@@ -289,7 +365,8 @@ class PisteSource(models.Model):
             'client_pme': self.client_pme,
             'client_large': self.client_large,
             'description': self.description or '',
-            'creator_id': self.creator_id.id if self.creator_id else None,
+            # create_uid est le champ standard Odoo pour l'utilisateur créateur
+            'creator_id': self.create_uid.id if self.create_uid else None,
         }
 
         try:
