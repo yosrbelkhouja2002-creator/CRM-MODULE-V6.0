@@ -5,6 +5,7 @@ import re
 import requests
 import json
 import logging
+from datetime import datetime, date
 
 _logger = logging.getLogger(__name__)
 
@@ -86,7 +87,6 @@ class PisteSource(models.Model):
     active = fields.Boolean(string="Actif", default=True)
 
     # ===== MOTS-CLÉS =====
-    # required=True ne fonctionne pas sur Many2many → validation via @api.constrains
     keywords_required_ids = fields.Many2many(
         'piste.keyword',
         string="Mots-clés obligatoires"
@@ -139,8 +139,6 @@ class PisteSource(models.Model):
         string="Pays ciblés"
     )
 
-    # Champ computed pour le domain dynamique dans la vue XML
-    # domain="[('id', 'in', geo_zone_allowed_country_ids)]"
     geo_zone_allowed_country_ids = fields.Many2many(
         'res.country',
         'piste_source_allowed_country_rel',
@@ -198,7 +196,6 @@ class PisteSource(models.Model):
     auto_date_start = fields.Date(string="Date de début")
     auto_date_end = fields.Date(string="Date de fin")
 
-    # Heure stockée en varchar HH:MM
     auto_time = fields.Selection([
         ('00:00', '00:00'), ('01:00', '01:00'), ('02:00', '02:00'),
         ('03:00', '03:00'), ('04:00', '04:00'), ('05:00', '05:00'),
@@ -241,10 +238,6 @@ class PisteSource(models.Model):
 
     @staticmethod
     def _parse_emails(raw):
-        """
-        Parse une chaîne d'emails séparés par virgule, point-virgule ou retour à la ligne.
-        Retourne une liste d'adresses nettoyées.
-        """
         if not raw:
             return []
         normalized = re.sub(r'[;\n\r]+', ',', raw)
@@ -254,7 +247,6 @@ class PisteSource(models.Model):
 
     @api.constrains('notify_emails', 'notify_email')
     def _check_notify_emails(self):
-        """Bloque la sauvegarde si notification email activée sans adresse valide."""
         for rec in self:
             if not rec.notify_email:
                 continue
@@ -273,7 +265,6 @@ class PisteSource(models.Model):
 
     @api.onchange('notify_emails')
     def _onchange_notify_emails(self):
-        """Avertissement en temps réel si un email est mal formaté."""
         if not self.notify_emails:
             return
         emails = self._parse_emails(self.notify_emails)
@@ -293,7 +284,6 @@ class PisteSource(models.Model):
     # ===== MÉTHODES STANDARD =====
 
     def name_get(self):
-        """Affiche 'Veille commerciale – <nom>' dans le breadcrumb."""
         result = []
         for rec in self:
             result.append((rec.id, f"Veille commerciale – {rec.name}"))
@@ -301,12 +291,10 @@ class PisteSource(models.Model):
 
     @api.depends('offer_ids')
     def _compute_offer_count(self):
-        """Calcule le nombre d'offres pour le smart button."""
         for source in self:
             source.offer_count = len(source.offer_ids)
 
     def action_view_offers(self):
-        """Ouvre la liste des offres filtrées sur cette veille."""
         return {
             'type': 'ir.actions.act_window',
             'name': f'Offres - {self.name}',
@@ -316,14 +304,140 @@ class PisteSource(models.Model):
             'context': {'default_source_id': self.id}
         }
 
+    # ===== GESTION CRON AUTOMATIQUE =====
+
+    def _cron_name(self):
+        """Retourne le nom unique du cron pour cette veille."""
+        return f'Veille N8N – {self.name} [{self.id}]'
+
+    def _get_cron_interval(self):
+        """Convertit la fréquence configurée en (interval_number, interval_type) pour ir.cron."""
+        if self.auto_frequency == 'daily':
+            return 1, 'days'
+        elif self.auto_frequency == 'weekly':
+            return 7, 'days'
+        elif self.auto_frequency == 'custom':
+            unit_map = {
+                'hours': 'hours',
+                'days': 'days',
+                'weeks': 'days',   # converti en jours ci-dessous
+                'months': 'months',
+            }
+            interval = self.custom_interval or 1
+            unit = self.custom_interval_unit or 'days'
+            if unit == 'weeks':
+                interval = interval * 7
+            return interval, unit_map.get(unit, 'days')
+        # Défaut : quotidien
+        return 1, 'days'
+
+    def _create_or_update_cron(self):
+        """
+        Crée ou met à jour le ir.cron lié à cette veille.
+        Appelé automatiquement à chaque create/write.
+        """
+        self.ensure_one()
+
+        # Si mode manuel → supprimer le cron existant
+        if self.automation_type != 'auto':
+            self._delete_cron()
+            return
+
+        # Calcul de la prochaine exécution (date_start + heure configurée)
+        hour = int((self.auto_time or '08:00').split(':')[0])
+        nextcall = datetime.combine(
+            self.auto_date_start or date.today(),
+            datetime.min.time()
+        ).replace(hour=hour, minute=0, second=0)
+
+        # Si nextcall est dans le passé, planifier pour aujourd'hui à l'heure configurée
+        now = datetime.now()
+        if nextcall < now:
+            nextcall = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+            # Si l'heure d'aujourd'hui est déjà passée → demain
+            if nextcall < now:
+                from datetime import timedelta
+                nextcall += timedelta(days=1)
+
+        interval_number, interval_type = self._get_cron_interval()
+
+        cron_vals = {
+            'name': self._cron_name(),
+            'model_id': self.env['ir.model']._get('piste.source').id,
+            'state': 'code',
+            'code': f'model.browse({self.id}).action_run_scrape()',
+            'interval_number': interval_number,
+            'interval_type': interval_type,
+            'nextcall': nextcall,
+            'numbercall': -1,   # Répétition infinie (la date de fin est gérée dans action_run_scrape)
+            'active': True,
+            'user_id': self.env.ref('base.user_root').id,
+        }
+
+        existing = self.env['ir.cron'].sudo().search([
+            ('name', '=', self._cron_name())
+        ], limit=1)
+
+        if existing:
+            existing.sudo().write(cron_vals)
+            _logger.info("Cron mis à jour pour la veille '%s' (ID: %s)", self.name, self.id)
+        else:
+            self.env['ir.cron'].sudo().create(cron_vals)
+            _logger.info("Cron créé pour la veille '%s' (ID: %s)", self.name, self.id)
+
+    def _delete_cron(self):
+        """Supprime le ir.cron lié à cette veille (si existant)."""
+        cron = self.env['ir.cron'].sudo().search([
+            ('name', '=', self._cron_name())
+        ], limit=1)
+        if cron:
+            cron.sudo().unlink()
+            _logger.info("Cron supprimé pour la veille '%s' (ID: %s)", self.name, self.id)
+
+    # ===== OVERRIDE CREATE / WRITE / UNLINK =====
+
+    @api.model
+    def create(self, vals):
+        record = super().create(vals)
+        record._create_or_update_cron()
+        return record
+
+    def write(self, vals):
+        res = super().write(vals)
+        # Recréer/mettre à jour le cron uniquement si des champs de planification changent
+        planning_fields = {
+            'automation_type', 'auto_frequency', 'auto_date_start',
+            'auto_date_end', 'auto_time', 'custom_interval', 'custom_interval_unit', 'name'
+        }
+        if planning_fields.intersection(vals.keys()):
+            for rec in self:
+                rec._create_or_update_cron()
+        return res
+
+    def unlink(self):
+        for rec in self:
+            rec._delete_cron()
+        return super().unlink()
+
     # ===== SCRAPING N8N =====
 
     def action_run_scrape(self):
         """
         Envoie la configuration de la veille au webhook N8N.
+        Vérifie d'abord si la date de fin est dépassée (mode auto).
         ⚠️ Changer l'URL en /webhook/piste-run pour la production.
         """
         self.ensure_one()
+
+        # ✅ Vérification date de fin (mode automatique uniquement)
+        if self.automation_type == 'auto' and self.auto_date_end:
+            if date.today() > self.auto_date_end:
+                self._delete_cron()
+                _logger.info(
+                    "Veille '%s' : date de fin (%s) dépassée → cron supprimé.",
+                    self.name, self.auto_date_end
+                )
+                return
 
         # ⚠️ Production : http://localhost:5678/webhook/piste-run
         n8n_webhook_url = "http://localhost:5678/webhook-test/piste-run"
@@ -365,7 +479,6 @@ class PisteSource(models.Model):
             'client_pme': self.client_pme,
             'client_large': self.client_large,
             'description': self.description or '',
-            # create_uid est le champ standard Odoo pour l'utilisateur créateur
             'creator_id': self.create_uid.id if self.create_uid else None,
         }
 
@@ -376,6 +489,10 @@ class PisteSource(models.Model):
                 data=json.dumps(payload),
                 timeout=10
             )
-            _logger.info("Scrape envoyé : %s -> %s", self.name, response.status_code)
+            # Mettre à jour la date de dernière recherche
+            self.sudo().write({'last_search_date': datetime.now()})
+            _logger.info(
+                "Scrape envoyé : %s → HTTP %s", self.name, response.status_code
+            )
         except Exception as e:
-            _logger.error("Erreur n8n : %s", str(e))
+            _logger.error("Erreur envoi webhook N8N pour '%s' : %s", self.name, str(e))

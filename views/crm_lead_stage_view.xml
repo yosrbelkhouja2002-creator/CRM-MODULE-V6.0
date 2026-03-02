@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="crm_lead_stage_statusbar_view" model="ir.ui.view">
+        <field name="name">crm.lead.form.stage.inherit</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.crm_lead_view_form"/>
+        <field name="arch" type="xml">
+            <!-- Afficher la barre d'étapes aussi pour les leads (type='lead') -->
+            <xpath expr="//field[@name='stage_id'][@widget='statusbar_duration']" position="attributes">
+                <attribute name="invisible">not active</attribute>
+            </xpath>
+        </field>
+    </record>
+</odoo>

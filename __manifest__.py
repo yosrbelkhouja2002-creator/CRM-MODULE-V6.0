@@ -14,7 +14,9 @@
     'data': [
         'security/ir.model.access.csv',
          'views/piste_source_view.xml',
-    'views/opportunity_workflow_view.xml',  
+    'views/opportunity_workflow_view.xml',
+    'views/crm_lead_stage_view.xml',
+    'data/crm_stage_data.xml',
     'views/crm_menu_override.xml',
     'views/crm_lead_pistes_view.xml',
     ],
