@@ -1,59 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Vue FORM personnalisée pour PISTES TROUVÉES (leads) -->
-    <record id="view_crm_lead_form_pistes_trouvees" model="ir.ui.view">
-        <field name="name">crm.lead.form.pistes.trouvees</field>
+
+    <!-- ✅ Ajouter le champ "Veille commerciale" dans l'onglet Marketing du lead CRM -->
+    <record id="crm_lead_form_inherit_piste_source" model="ir.ui.view">
+        <field name="name">crm.lead.form.inherit.piste.source</field>
         <field name="model">crm.lead</field>
         <field name="inherit_id" ref="crm_lead_code_update.view_crm_lead_form_inherit_type_contact"/>
-        <field name="priority">20</field>
+        <field name="priority">25</field>
         <field name="arch" type="xml">
-            
-            <!-- Champs obligatoires uniquement en opportunité -->
-            
-            <!-- Client / Société -->
-            <xpath expr="//field[@name='partner_id']" position="attributes">
-                <attribute name="string">Client</attribute>
-                <attribute name="required" eval="type == 'opportunity'"/>
+            <xpath expr="//field[@name='source_id']" position="after">
+                <field name="piste_source_id" string="Veille commerciale" readonly="1"/>
             </xpath>
-            
-            <!-- Mode delivery -->
-            <xpath expr="//field[@name='Mode_de_livraison']" position="attributes">
-                <attribute name="string">Mode delivery</attribute>
-                <attribute name="required" eval="type == 'opportunity'"/>
-            </xpath>
-            
-            <!-- Business unit -->
-            <xpath expr="//field[@name='business_unit_id']" position="attributes">
-                <attribute name="string">Business unit</attribute>
-                <attribute name="required" eval="type == 'opportunity'"/>
-            </xpath>
-            
-            <!-- Contact / personne -->
-            <xpath expr="//field[@name='person_partner_id']" position="attributes">
-                <attribute name="string">Contact</attribute>
-                <attribute name="required" eval="type == 'opportunity'"/>
-            </xpath>
-            
-            <!-- Revenu attendu -->
-            <xpath expr="//field[@name='expected_revenue']" position="attributes">
-                <attribute name="required" eval="type == 'opportunity'"/>
-            </xpath>
-            
-            <!-- Probabilité -->
-            <xpath expr="//field[@name='probability']" position="attributes">
-                <attribute name="required" eval="type == 'opportunity'"/>
-            </xpath>
-            
-            <!-- Vendeur / Commercial -->
-            <xpath expr="//field[@name='user_id']" position="attributes">
-                <attribute name="required" eval="type == 'opportunity'"/>
-            </xpath>
-            
-            <!-- Masquer l'onglet "Détail / Revenu" pour les leads -->
-            <xpath expr="//notebook/page[position()=3]" position="attributes">
-                <attribute name="invisible">1</attribute>
-            </xpath>
-            
         </field>
     </record>
+
 </odoo>

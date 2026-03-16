@@ -6,6 +6,14 @@ import datetime
 class CrmLead(models.Model):
     _inherit = 'crm.lead'
 
+    # ✅ Lien vers la veille commerciale qui a généré ce lead
+    piste_source_id = fields.Many2one(
+        'piste.source',
+        string="Veille commerciale",
+        index=True,
+        ondelete='set null',
+    )
+
     @api.model
     def create(self, vals):
         # Si name n'est pas fourni (typique du quick-create ou création minimale)

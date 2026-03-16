@@ -3,3 +3,4 @@ access_piste_source_user,access_piste_source_user,model_piste_source,base.group_
 access_piste_offer_user,access_piste_offer_user,model_piste_offer,base.group_user,1,1,1,1
 access_piste_keyword_user,access_piste_keyword_user,model_piste_keyword,base.group_user,1,1,1,1
 access_piste_region_user,access_piste_region_user,model_piste_region,base.group_user,1,1,1,1
+access_piste_email_user,access_piste_email_user,model_piste_email,base.group_user,1,1,1,1

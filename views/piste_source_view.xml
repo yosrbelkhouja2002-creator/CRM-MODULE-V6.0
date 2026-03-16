@@ -40,7 +40,7 @@
     </data>
 
     <!-- ============================================== -->
-    <!-- ACTIONS                                        -->
+    <!-- ACTIONS GLOBALES (conservées pour le menu)    -->
     <!-- ============================================== -->
 
     <record id="action_pistes_trouvees" model="ir.actions.act_window">
@@ -59,28 +59,18 @@
         <field name="context">{'default_type': 'opportunity'}</field>
     </record>
 
-    <record id="action_new_opportunity" model="ir.actions.act_window">
-        <field name="name">Nouvelle opportunité</field>
-        <field name="res_model">crm.lead</field>
-        <field name="view_mode">form</field>
-        <field name="target">new</field>
-        <field name="context">{'default_type': 'opportunity'}</field>
-    </record>
-
     <record id="action_stats" model="ir.actions.act_window">
         <field name="name">Statistiques</field>
         <field name="res_model">crm.lead</field>
         <field name="view_mode">graph,pivot</field>
     </record>
 
-    <!-- Action : Gestion des mots-clés de veille -->
     <record id="action_piste_keyword" model="ir.actions.act_window">
         <field name="name">Mots-clés</field>
         <field name="res_model">piste.keyword</field>
         <field name="view_mode">tree,form</field>
     </record>
 
-    <!-- Vue liste des mots-clés (éditable directement dans la liste) -->
     <record id="view_piste_keyword_tree" model="ir.ui.view">
         <field name="name">piste.keyword.tree</field>
         <field name="model">piste.keyword</field>
@@ -91,7 +81,6 @@
         </field>
     </record>
 
-    <!-- Menu CRM > Configuration > Mots-clés de veille -->
     <menuitem id="menu_piste_keyword"
               name="Mots-clés de veille"
               parent="crm.crm_menu_config"
@@ -99,7 +88,7 @@
               sequence="99"/>
 
     <!-- ============================================== -->
-    <!-- VUE PRINCIPALE                                 -->
+    <!-- VUE PRINCIPALE : Fiche Veille commerciale     -->
     <!-- ============================================== -->
 
     <record id="view_piste_source_form" model="ir.ui.view">
@@ -116,45 +105,15 @@
                 </header>
 
                 <sheet>
-                    <!-- SMART BUTTONS -->
+                    <!-- ===== SMART BUTTONS ===== -->
                     <div class="oe_button_box" name="button_box">
-                        <button name="action_view_offers"
+                        <button name="action_view_crm_leads"
                                 type="object"
                                 class="oe_stat_button"
-                                icon="fa-search">
-                            <field name="offer_count" widget="statinfo" string="Offres"/>
-                        </button>
-                        <button name="%(action_pistes_trouvees)d"
-                                type="action"
-                                class="oe_stat_button"
                                 icon="fa-inbox">
-                            <div class="o_field_widget o_stat_info">
-                                <span class="o_stat_text">Pistes trouvées</span>
-                            </div>
-                        </button>
-                        <button name="%(action_pistes_validees)d"
-                                type="action"
-                                class="oe_stat_button"
-                                icon="fa-check-circle">
-                            <div class="o_field_widget o_stat_info">
-                                <span class="o_stat_text">Pistes validées</span>
-                            </div>
-                        </button>
-                        <button name="%(action_new_opportunity)d"
-                                type="action"
-                                class="oe_stat_button"
-                                icon="fa-plus-circle">
-                            <div class="o_field_widget o_stat_info">
-                                <span class="o_stat_text">Nouvelle opportunité</span>
-                            </div>
-                        </button>
-                        <button name="%(action_stats)d"
-                                type="action"
-                                class="oe_stat_button"
-                                icon="fa-bar-chart">
-                            <div class="o_field_widget o_stat_info">
-                                <span class="o_stat_text">Statistiques</span>
-                            </div>
+                            <field name="crm_lead_count"
+                                   widget="statinfo"
+                                   string="Pistes trouvées"/>
                         </button>
                     </div>
 
@@ -191,7 +150,6 @@
                                    placeholder="Sélectionnez une ou plusieurs régions"/>
                         </group>
                         <group>
-                            <!-- Champ invisible requis pour le domain dynamique des pays -->
                             <field name="geo_zone_allowed_country_ids" invisible="1"/>
                             <field name="geo_zones"
                                    string="Pays ciblés"
@@ -201,31 +159,27 @@
                         </group>
                     </group>
 
-                    <!-- NOTEBOOK — onglets secondaires -->
+                    <!-- NOTEBOOK -->
                     <notebook>
 
-                        <!-- PLATEFORMES -->
+                        <!-- ONGLET 1 : Plateformes -->
                         <page string="Plateformes">
                             <group>
                                 <group>
-                                    <field name="platform_marches_publics"/>
-                                    <field name="platform_francetenders"/>
-                                    <field name="platform_marchesonline"/>
-                                    <field name="platform_globaltenders"/>
-                                    <field name="platform_batieu"/>
-                                    <field name="platform_ted"/>
+                                    <field name="platform_achatpublic"/>
+                                    <field name="platform_francemarches"/>
+                                    <field name="platform_awsolutions"/>
+                                    <field name="platform_doubletrade"/>
                                 </group>
                                 <group>
-                                    <field name="platform_emarches"/>
-                                    <field name="platform_appelaprojets"/>
-                                    <field name="platform_tenderimpulse"/>
-                                    <field name="platform_deepbloo"/>
+                                    <field name="platform_marchespublics"/>
+                                    <field name="platform_marchessecurise"/>
                                     <field name="platform_boamp"/>
                                 </group>
                             </group>
                         </page>
 
-                        <!-- PLANIFICATION -->
+                        <!-- ONGLET 2 : Planification -->
                         <page string="Planification">
                             <group>
                                 <field name="automation_type" widget="radio"/>
@@ -233,7 +187,6 @@
                             <group invisible="automation_type == 'manual'">
                                 <group string="Fréquence d'exécution">
                                     <field name="auto_frequency"/>
-                                    <!-- Heure masquée si mode custom avec unité = heures -->
                                     <field name="auto_time"
                                            string="Heure d'exécution"
                                            invisible="auto_frequency == 'custom' and custom_interval_unit == 'hours'"/>
@@ -250,25 +203,29 @@
                             </group>
                         </page>
 
-                        <!-- INFORMATIONS SUPPLÉMENTAIRES -->
+                        <!-- ONGLET 3 : Informations supplémentaires -->
                         <page string="Informations supplémentaires">
                             <group>
                                 <group>
-                                    <field name="notify_email"/>
+                                    <separator string="Notifications" colspan="2"/>
+                                    <!-- Notification Odoo en premier -->
                                     <field name="notify_odoo"/>
-                                    <!-- Champ emails visible uniquement si notification email activée -->
-                                    <field name="notify_emails"
+                                    <!-- Notification email + destinataires en dessous -->
+                                    <field name="notify_email"/>
+                                    <field name="notify_email_ids"
                                            string="Emails des destinataires"
-                                           widget="text"
-                                           placeholder="alice@example.com&#10;bob@example.com"
+                                           widget="many2many_tags"
                                            invisible="not notify_email"/>
+                                    <separator string="Budget" colspan="2"/>
                                     <field name="budget_min"/>
                                     <field name="budget_max"/>
                                 </group>
                                 <group>
+                                    <separator string="Durée du contrat" colspan="2"/>
                                     <field name="duration_short"/>
                                     <field name="duration_medium"/>
                                     <field name="duration_long"/>
+                                    <separator string="Type de client" colspan="2"/>
                                     <field name="client_pme"/>
                                     <field name="client_large"/>
                                 </group>
@@ -281,7 +238,9 @@
         </field>
     </record>
 
-    <!-- ACTION PRINCIPALE DU MENU -->
+    <!-- ============================================== -->
+    <!-- ACTION PRINCIPALE DU MENU VEILLE              -->
+    <!-- ============================================== -->
     <record id="action_opportunity_workflow" model="ir.actions.act_window">
         <field name="name">Veille commerciale</field>
         <field name="res_model">piste.source</field>
