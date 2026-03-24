@@ -457,7 +457,7 @@ class PisteSource(models.Model):
                 self._delete_cron()
                 return
 
-        n8n_webhook_url = "http://localhost:5678/webhook-test/piste-run"
+        n8n_webhook_url = "http://localhost:5678/webhook/piste-run"
 
         payload = {
             'id': self.id,

@@ -23,7 +23,6 @@ class CRMAPI(http.Controller):
     def _authenticate_api_key(self):
         """
         Vérifie la clé API dans le header Authorization (Bearer token).
-        Utilise le système natif res.users.apikeys d'Odoo 17.
         Retourne (uid, None) si valide, (None, response_erreur) sinon.
         """
         auth_header = request.httprequest.headers.get('Authorization')
@@ -69,21 +68,8 @@ class CRMAPI(http.Controller):
     def bulk_create_leads(self, **kw):
         """
         Reçoit une liste d'offres depuis N8N et crée les leads CRM.
-        Attache automatiquement le PDF si pdf_base64 est fourni dans l'offre.
-
-        JSON attendu :
-        {
-            "offers": [
-                {
-                    "name": "Titre de l'appel d'offre",
-                    "contact_name": "IRCEC",
-                    "email_from": "...",
-                    "piste_source_id": 101,
-                    "pdf_base64": "JVBERi0x...",        ← optionnel
-                    "pdf_filename": "BOAMP_26-13084.pdf" ← optionnel
-                }
-            ]
-        }
+        Vérifie les doublons par nom avant de créer.
+        Attache automatiquement le PDF si pdf_base64 est fourni.
         """
         uid, error_response = self._authenticate_api_key()
         if error_response:
@@ -103,10 +89,24 @@ class CRMAPI(http.Controller):
                 )
 
             created_leads = []
+            skipped_duplicates = 0
 
             for item in offers_list:
                 if not item.get('name'):
                     _logger.warning("Lead ignoré : name manquant")
+                    continue
+
+                # ✅ Vérification doublon par name uniquement
+                existing = env['crm.lead'].sudo().search([
+                    ('name', '=', item.get('name')),
+                ], limit=1)
+
+                if existing:
+                    _logger.info(
+                        "Lead doublon ignoré : '%s' existe déjà (ID %s)",
+                        item.get('name'), existing.id
+                    )
+                    skipped_duplicates += 1
                     continue
 
                 try:
@@ -153,7 +153,6 @@ class CRMAPI(http.Controller):
                         'description': item.get('description'),
                         'Mode_de_livraison': item.get('Mode_de_livraison'),
                         'source_id': item.get('source_id'),
-                        # ✅ Lien vers la veille commerciale qui a généré ce lead
                         'piste_source_id': item.get('piste_source_id'),
                     }
 
@@ -178,7 +177,10 @@ class CRMAPI(http.Controller):
                             pdf_attached = True
                             _logger.info("PDF '%s' attaché au lead ID %s", pdf_filename, lead.id)
                         except Exception as pdf_error:
-                            _logger.warning("Impossible d'attacher le PDF au lead %s : %s", lead.id, str(pdf_error))
+                            _logger.warning(
+                                "Impossible d'attacher le PDF au lead %s : %s",
+                                lead.id, str(pdf_error)
+                            )
 
                     created_leads.append({
                         'lead_id': lead.id,
@@ -188,7 +190,7 @@ class CRMAPI(http.Controller):
                         'Mode_de_livraison': lead.Mode_de_livraison,
                         'business_unit_id': lead.business_unit_id.id if lead.business_unit_id else None,
                         'piste_source_id': lead.piste_source_id.id if lead.piste_source_id else None,
-                        'pdf_attached': pdf_attached,  # ✅ indique si le PDF a été attaché
+                        'pdf_attached': pdf_attached,
                     })
 
                 except Exception as lead_error:
@@ -203,8 +205,9 @@ class CRMAPI(http.Controller):
                 json.dumps({
                     'success': True,
                     'created_count': len(created_leads),
+                    'skipped_duplicates': skipped_duplicates,
                     'leads': created_leads,
-                    'message': f'{len(created_leads)} lead(s) créé(s) avec succès'
+                    'message': f'{len(created_leads)} lead(s) créé(s), {skipped_duplicates} doublon(s) ignoré(s)'
                 }),
                 headers={'Content-Type': 'application/json'},
                 status=201
@@ -264,7 +267,6 @@ class CRMAPI(http.Controller):
                     status=404
                 )
 
-            # Encode le fichier binaire en base64
             pdf_data = base64.b64encode(pdf_file.read()).decode('utf-8')
 
             attachment = env['ir.attachment'].sudo().create({
@@ -351,6 +353,169 @@ class CRMAPI(http.Controller):
 
         except Exception as e:
             _logger.exception("Erreur get_leads")
+            return request.make_response(
+                json.dumps({'success': False, 'error': str(e)}),
+                headers={'Content-Type': 'application/json'},
+                status=500
+            )
+
+    # =========================================================================
+    # GET /api/piste/auto_sources
+    # Retourne les veilles automatiques valides
+    # =========================================================================
+    @http.route(
+        '/api/piste/auto_sources',
+        type='http',
+        auth='none',
+        methods=['GET'],
+        csrf=False,
+        save_session=False
+    )
+    def get_auto_sources(self, **kw):
+        """
+        Retourne les veilles en mode automatique valides.
+        Filtre : automation_type=auto, frequency valide, date_end non dépassée.
+        Convertit last_run en heure locale Tunis (UTC+1).
+        """
+        uid, error_response = self._authenticate_api_key()
+        if error_response:
+            return error_response
+
+        import datetime as dt
+        import pytz
+
+        tz = pytz.timezone('Africa/Tunis')
+        today = dt.datetime.now(tz).date()
+
+        sources = request.env['piste.source'].sudo().search([
+            ('automation_type', '=', 'auto'),
+            ('active', '=', True),
+            ('auto_frequency', 'in', ['daily', 'weekly', 'custom']),
+            '|',
+            ('auto_date_end', '=', False),
+            ('auto_date_end', '>=', today.strftime('%Y-%m-%d')),
+        ])
+
+        result = []
+        for s in sources:
+            # Ignore si dates incohérentes
+            if s.auto_date_start and s.auto_date_end:
+                if s.auto_date_end < s.auto_date_start:
+                    _logger.warning(
+                        "Veille '%s' (ID %s) ignorée : date_end < date_start",
+                        s.name, s.id
+                    )
+                    continue
+
+            # Convertit last_search_date en heure locale Tunis
+            last_run = None
+            if s.last_search_date:
+                last_run_utc = pytz.utc.localize(s.last_search_date)
+                last_run_local = last_run_utc.astimezone(tz)
+                last_run = last_run_local.strftime('%Y-%m-%d %H:%M:%S')
+
+            result.append({
+                'id': s.id,
+                'name': s.name,
+                'frequency': s.auto_frequency,
+                'time': s.auto_time or '08:00',
+                'interval': s.custom_interval or 1,
+                'unit': s.custom_interval_unit or 'days',
+                'date_start': str(s.auto_date_start) if s.auto_date_start else None,
+                'date_end': str(s.auto_date_end) if s.auto_date_end else None,
+                'last_run': last_run,
+                'keywords': [kw.name for kw in s.keywords_required_ids],
+                'platforms': {
+                    'achatpublic': s.platform_achatpublic,
+                    'francemarches': s.platform_francemarches,
+                    'awsolutions': s.platform_awsolutions,
+                    'doubletrade': s.platform_doubletrade,
+                    'marchespublics': s.platform_marchespublics,
+                    'marchessecurise': s.platform_marchessecurise,
+                    'boamp': s.platform_boamp,
+                },
+                'budget_min': s.budget_min,
+                'budget_max': s.budget_max,
+                'geo_zones': [c.code for c in s.geo_zones],
+                'geo_regions': [r.name for r in s.geo_zone_region_ids],
+                'notify_odoo': s.notify_odoo,
+                'notify_email': s.notify_email,
+                'notify_emails': [e.email for e in s.notify_email_ids],
+                'duration_short': s.duration_short,
+                'duration_medium': s.duration_medium,
+                'duration_long': s.duration_long,
+                'client_pme': s.client_pme,
+                'client_large': s.client_large,
+                'description': s.description or '',
+                'creator_id': s.create_uid.id if s.create_uid else None,
+            })
+
+        return request.make_response(
+            json.dumps({
+                'success': True,
+                'count': len(result),
+                'sources': result
+            }),
+            headers={'Content-Type': 'application/json'}
+        )
+
+    # =========================================================================
+    # POST /api/piste/update_last_run
+    # Met à jour last_search_date après exécution automatique
+    # =========================================================================
+    @http.route(
+        '/api/piste/update_last_run',
+        type='http',
+        auth='none',
+        methods=['POST'],
+        csrf=False,
+        save_session=False
+    )
+    def update_last_run(self, **kw):
+        """
+        Met à jour last_search_date d'une veille après exécution automatique.
+        Body attendu : { "id": 117 }
+        """
+        uid, error_response = self._authenticate_api_key()
+        if error_response:
+            return error_response
+
+        env = request.env(user=uid)
+
+        try:
+            import datetime as dt
+            import pytz
+
+            data = json.loads(request.httprequest.data or '{}')
+            source_id = data.get('id')
+
+            if not source_id:
+                return request.make_response(
+                    json.dumps({'success': False, 'error': 'id manquant'}),
+                    headers={'Content-Type': 'application/json'},
+                    status=400
+                )
+
+            source = env['piste.source'].sudo().browse(int(source_id))
+            if not source.exists():
+                return request.make_response(
+                    json.dumps({'success': False, 'error': f'Veille {source_id} introuvable'}),
+                    headers={'Content-Type': 'application/json'},
+                    status=404
+                )
+
+            # Sauvegarde en UTC (standard Odoo)
+            source.sudo().write({'last_search_date': dt.datetime.utcnow()})
+            _logger.info("last_run mis à jour pour veille ID %s", source_id)
+
+            return request.make_response(
+                json.dumps({'success': True, 'id': source_id}),
+                headers={'Content-Type': 'application/json'},
+                status=200
+            )
+
+        except Exception as e:
+            _logger.exception("Erreur update_last_run")
             return request.make_response(
                 json.dumps({'success': False, 'error': str(e)}),
                 headers={'Content-Type': 'application/json'},
