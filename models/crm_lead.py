@@ -13,7 +13,11 @@ class CrmLead(models.Model):
         index=True,
         ondelete='set null',
     )
-
+    pertinence_line_ids = fields.One2many(
+        'crm.lead.pertinence.line',
+        'lead_id',
+        string='Lignes de pertinence'
+    )
     @api.model
     def create(self, vals):
         # Si name n'est pas fourni (typique du quick-create ou création minimale)

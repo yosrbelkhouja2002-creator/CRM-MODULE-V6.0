@@ -41,4 +41,4 @@
     <field name="action" ref="action_opportunity_workflow"/>
     <field name="sequence">2</field>
 </record>
-</odoo>
+</odoo> 

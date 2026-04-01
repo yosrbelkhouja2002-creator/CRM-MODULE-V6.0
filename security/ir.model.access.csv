@@ -4,3 +4,4 @@ access_piste_offer_user,access_piste_offer_user,model_piste_offer,base.group_use
 access_piste_keyword_user,access_piste_keyword_user,model_piste_keyword,base.group_user,1,1,1,1
 access_piste_region_user,access_piste_region_user,model_piste_region,base.group_user,1,1,1,1
 access_piste_email_user,access_piste_email_user,model_piste_email,base.group_user,1,1,1,1
+access_crm_lead_pertinence_line,crm.lead.pertinence.line,model_crm_lead_pertinence_line,base.group_user,1,1,1,1

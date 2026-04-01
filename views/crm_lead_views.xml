@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <record id="crm_lead_form_view_inherit_offre" model="ir.ui.view">
+        <field name="name">crm.lead.form.inherit.offre</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.crm_lead_view_form"/>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+
+            <field name="partner_id" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </field>
+            <field name="contact_name" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </field>
+            <field name="person_partner_id" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </field>
+            <field name="title" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </field>
+
+            <xpath expr="//group[@name='lead_partner']/field[@name='partner_name']" position="attributes">
+                <attribute name="string">Nom de la société</attribute>
+                <attribute name="placeholder">Nom de l'entreprise cliente...</attribute>
+                <attribute name="required">1</attribute>
+            </xpath>
+
+            <xpath expr="//group[@name='lead_partner']/field[@name='business_unit_id']" position="after">
+                <field name="offre_id" string="Offre" domain="offre_domain" options="{'no_create': True}"/>
+                <field name="sub_offre_id" string="Sous-offre" domain="sub_offre_domain" options="{'no_create': True}"/>
+            </xpath>
+
+            <xpath expr="//page[@name='lead']//field[@name='partner_name']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
+            <!-- ✅ SMART BUTTON score de pertinence (sans niveau_pertinence) -->
+            <div name="button_box" position="inside">
+                <button class="oe_stat_button" icon="fa-star" type="object" name="action_view_pertinence">
+                    <div class="o_field_widget o_stat_info">
+                        <span class="o_stat_value">
+                            <field name="score_pertinence" widget="float" digits="[5,1]"/>
+                        </span>
+                        <span class="o_stat_text">Score</span>
+                    </div>
+                </button>
+            </div>
+
+            <!-- ✅ ONGLET PERTINENCE -->
+            <notebook position="inside">
+                <page string="Pertinence" name="pertinence">
+                    <field name="pertinence_line_ids" readonly="0">
+                        <tree editable="bottom" create="false" delete="false">
+                            <field name="sequence" widget="handle"/>
+                            <field name="critere" string="Critère" readonly="1"/>
+                            <field name="poids" string="Poids (%)" readonly="1"/>
+                            <field name="resultat" string="Résultat"/>
+                            <field name="note" string="Note (/10)"/>
+                            <field name="total" string="Score" readonly="1"/>
+                        </tree>
+                    </field>
+                    <group>
+                        <field name="score_pertinence" string="Score global (/100)" readonly="1"/>
+                    </group>
+                </page>
+            </notebook>
+
+        </field>
+    </record>
+
+    <record id="crm_lead_form_inherit_piste_source" model="ir.ui.view">
+        <field name="name">crm.lead.form.inherit.piste.source</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm_lead_code_update.view_crm_lead_form_inherit_type_contact"/>
+        <field name="priority">25</field>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='source_id']" position="after">
+                <field name="piste_source_id" string="Veille commerciale" readonly="1"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="crm_lead_tree_view_inherit_offre" model="ir.ui.view">
+        <field name="name">crm.lead.tree.inherit.offre</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.crm_case_tree_view_leads"/>
+        <field name="arch" type="xml">
+            <field name="partner_id" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </field>
+            <field name="partner_id" position="after">
+                <field name="partner_name" string="Société" optional="show"/>
+                <field name="business_unit_id" optional="show"/>
+                <field name="offre_id" optional="show"/>
+                <field name="score_pertinence" string="Score" optional="show"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="crm_opportunity_tree_view_inherit_offre" model="ir.ui.view">
+        <field name="name">crm.opportunity.tree.inherit.offre</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.crm_case_tree_view_oppor"/>
+        <field name="arch" type="xml">
+            <field name="partner_id" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </field>
+            <field name="partner_id" position="after">
+                <field name="partner_name" string="Société" optional="show"/>
+                <field name="business_unit_id" optional="show"/>
+                <field name="offre_id" optional="show"/>
+                <field name="score_pertinence" string="Score" optional="show"/>
+            </field>
+        </field>
+    </record>
+
+</odoo>

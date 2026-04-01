@@ -79,8 +79,11 @@ class CRMAPI(http.Controller):
                     "contact_name": "IRCEC",
                     "email_from": "...",
                     "piste_source_id": 101,
-                    "pdf_base64": "JVBERi0x...",        ← optionnel
-                    "pdf_filename": "BOAMP_26-13084.pdf" ← optionnel
+                    "business_unit_id": 5,      ← optionnel
+                    "offre_id": 12,             ← optionnel (NOUVEAU)
+                    "sub_offre_id": 45,         ← optionnel (NOUVEAU)
+                    "pdf_base64": "JVBERi0...", ← optionnel
+                    "pdf_filename": "BOAMP.pdf" ← optionnel
                 }
             ]
         }
@@ -146,7 +149,10 @@ class CRMAPI(http.Controller):
                         'contact_partner_id': contact_partner.id if contact_partner else item.get('contact_partner_id'),
                         'country_id': item.get('country_id'),
                         'state_id': item.get('state_id'),
+                        # ✅ CHAMPS OFFRE / SOUS-OFFRE / BU
                         'business_unit_id': item.get('business_unit_id'),
+                        'offre_id': item.get('offre_id'),
+                        'sub_offre_id': item.get('sub_offre_id'),
                         'probability': int(item.get('probability', 0)) if item.get('probability') else 0,
                         'expected_revenue': float(item.get('expected_revenue', 0)) if item.get('expected_revenue') else 0,
                         'date_deadline': item.get('date_deadline'),
@@ -159,6 +165,45 @@ class CRMAPI(http.Controller):
 
                     lead = env['crm.lead'].sudo().create(lead_vals)
                     _logger.info("Lead créé : ID %s - %s", lead.id, lead.name)
+
+                    # ✅ Mise à jour pertinence si N8N envoie les notes
+                    pertinence = item.get('pertinence')
+                    if pertinence:
+                        mapping = [
+                            ('Durée du projet',           'duree_resultat',        'duree_note'),
+                            ("Chiffre d'affaires estimé", 'ca_resultat',           'ca_note'),
+                            ('Cohérence savoir-faire',    'savoir_faire_resultat', 'savoir_faire_note'),
+                            ('Potentiel futur',           'potentiel_resultat',    'potentiel_note'),
+                            ('Délai de réponse',          'delai_resultat',        'delai_note'),
+                            ('Localisation',              'localisation_resultat', 'localisation_note'),
+                        ]
+                        for critere_name, res_key, note_key in mapping:
+                            line = env['crm.lead.pertinence.line'].sudo().search([
+                                ('lead_id', '=', lead.id),
+                                ('critere', '=', critere_name),
+                            ], limit=1)
+                            if line:
+                                line.write({
+                                    'resultat': pertinence.get(res_key, ''),
+                                    'note': float(pertinence.get(note_key, 0) or 0),
+                                })
+
+
+
+
+
+                    
+
+
+
+
+
+
+
+
+
+
+
 
                     # ── Attachement PDF si fourni et valide ──
                     pdf_base64 = item.get('pdf_base64')
@@ -186,9 +231,15 @@ class CRMAPI(http.Controller):
                         'contact_name': lead.contact_name,
                         'contact_id': contact_partner.id if contact_partner else None,
                         'Mode_de_livraison': lead.Mode_de_livraison,
+                        # ✅ RETOURNE LES CHAMPS OFFRE/SOUS-OFFRE/BU
                         'business_unit_id': lead.business_unit_id.id if lead.business_unit_id else None,
+                        'business_unit_name': lead.business_unit_id.name if lead.business_unit_id else None,
+                        'offre_id': lead.offre_id.id if lead.offre_id else None,
+                        'offre_name': lead.offre_id.name if lead.offre_id else None,
+                        'sub_offre_id': lead.sub_offre_id.id if lead.sub_offre_id else None,
+                        'sub_offre_name': lead.sub_offre_id.name if lead.sub_offre_id else None,
                         'piste_source_id': lead.piste_source_id.id if lead.piste_source_id else None,
-                        'pdf_attached': pdf_attached,  # ✅ indique si le PDF a été attaché
+                        'pdf_attached': pdf_attached,
                     })
 
                 except Exception as lead_error:
@@ -334,9 +385,22 @@ class CRMAPI(http.Controller):
                     'expected_revenue': lead.expected_revenue,
                     'user_id': lead.user_id.id if lead.user_id else None,
                     'Mode_de_livraison': lead.Mode_de_livraison,
+                    # ✅ AJOUT DES CHAMPS OFFRE/SOUS-OFFRE/BU DANS LA RÉPONSE
                     'business_unit_id': lead.business_unit_id.id if lead.business_unit_id else None,
+                    'business_unit_name': lead.business_unit_id.name if lead.business_unit_id else None,
+                    'offre_id': lead.offre_id.id if lead.offre_id else None,
+                    'offre_name': lead.offre_id.name if lead.offre_id else None,
+                    'sub_offre_id': lead.sub_offre_id.id if lead.sub_offre_id else None,
+                    'sub_offre_name': lead.sub_offre_id.name if lead.sub_offre_id else None,
                     'piste_source_id': lead.piste_source_id.id if lead.piste_source_id else None,
                     'create_date': lead.create_date.isoformat() if lead.create_date else None,
+                    
+
+
+
+
+
+
                 })
 
             return request.make_response(

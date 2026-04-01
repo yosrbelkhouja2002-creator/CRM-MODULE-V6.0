@@ -3,3 +3,4 @@ from . import piste_source
 from . import piste_offer
 from . import crm_lead
 from . import crm_stage
+from . import pertinence_line 
