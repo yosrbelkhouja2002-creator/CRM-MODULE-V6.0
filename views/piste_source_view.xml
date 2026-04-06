@@ -2,7 +2,7 @@
 <odoo>
 
     <!-- ============================================== -->
-    <!-- DONNÉES : Régions géographiques (noupdate)    -->
+    <!-- DONNÉES : Régions                             -->
     <!-- ============================================== -->
     <data noupdate="1">
         <record id="region_europe" model="piste.region">
@@ -40,9 +40,8 @@
     </data>
 
     <!-- ============================================== -->
-    <!-- ACTIONS GLOBALES (conservées pour le menu)    -->
+    <!-- ACTIONS                                       -->
     <!-- ============================================== -->
-
     <record id="action_pistes_trouvees" model="ir.actions.act_window">
         <field name="name">Pistes trouvées</field>
         <field name="res_model">crm.lead</field>
@@ -76,7 +75,7 @@
         <field name="model">piste.keyword</field>
         <field name="arch" type="xml">
             <tree editable="bottom">
-                <field name="name" string="Mot-clé"/>
+                <field name="name"/>
             </tree>
         </field>
     </record>
@@ -88,9 +87,8 @@
               sequence="99"/>
 
     <!-- ============================================== -->
-    <!-- VUE PRINCIPALE : Fiche Veille commerciale     -->
+    <!-- VUE PRINCIPALE                                -->
     <!-- ============================================== -->
-
     <record id="view_piste_source_form" model="ir.ui.view">
         <field name="name">piste.source.form</field>
         <field name="model">piste.source</field>
@@ -100,12 +98,11 @@
                     <button name="action_run_scrape"
                             type="object"
                             string="Lancer scraping N8N"
-                            class="btn-primary"
-                            help="Envoie la configuration à N8N pour scraping réel"/>
+                            class="btn-primary"/>
                 </header>
 
                 <sheet>
-                    <!-- ===== SMART BUTTONS ===== -->
+                    <!-- SMART BUTTONS -->
                     <div class="oe_button_box" name="button_box">
                         <button name="action_view_crm_leads"
                                 type="object"
@@ -120,49 +117,33 @@
                     <!-- TITRE -->
                     <div class="oe_title">
                         <h1>
-                            <field name="name"
-                                   string="Nom de la veille"
-                                   placeholder="Ex : Projets Odoo – Développement"/>
+                            <field name="name" placeholder="Nom de la veille..."/>
                         </h1>
                     </div>
 
-                    <!-- CONFIGURATION PRINCIPALE -->
+                    <!-- CONFIG -->
                     <group>
-                        <group>
-                            <field name="description"
-                                   string="Description"
-                                   widget="text"
-                                   placeholder="Objectif de cette veille..."/>
-                        </group>
-                        <group>
-                            <field name="keywords_required_ids"
-                                   string="Mots-clés requis"
-                                   widget="many2many_tags"
-                                   placeholder="Sélectionnez ou ajoutez des mots-clés"/>
-                        </group>
-                    </group>
+    <group>
+        <field name="keywords_required_ids" widget="many2many_tags"/>
+    </group>
+    <group>
+        <field name="geo_zone_region_ids" widget="many2many_tags"/>
+    </group>
+</group>
 
-                    <group>
-                        <group>
-                            <field name="geo_zone_region_ids"
-                                   string="Régions ciblées"
-                                   widget="many2many_tags"
-                                   placeholder="Sélectionnez une ou plusieurs régions"/>
-                        </group>
-                        <group>
-                            <field name="geo_zone_allowed_country_ids" invisible="1"/>
-                            <field name="geo_zones"
-                                   string="Pays ciblés"
-                                   widget="many2many_tags"
-                                   placeholder="Sélectionnez un ou plusieurs pays"
-                                   domain="[('id', 'in', geo_zone_allowed_country_ids)]"/>
-                        </group>
-                    </group>
+<!-- PAYS CIBLÉS - PLEINE LARGEUR -->
+<group>
+    <field name="geo_zone_allowed_country_ids" invisible="1"/>
+    <field name="geo_zones" 
+           widget="many2many_tags"
+           colspan="2"
+           domain="[('id', 'in', geo_zone_allowed_country_ids)]"/>
+</group>
 
                     <!-- NOTEBOOK -->
                     <notebook>
 
-                        <!-- ONGLET 1 : Plateformes -->
+                        <!-- Plateformes -->
                         <page string="Plateformes">
                             <group>
                                 <group>
@@ -179,53 +160,112 @@
                             </group>
                         </page>
 
-                        <!-- ONGLET 2 : Planification -->
+                        <!-- Planification -->
                         <page string="Planification">
                             <group>
-                                <field name="automation_type" widget="radio"/>
+                                <field name="automation_type"/>
                             </group>
                             <group invisible="automation_type == 'manual'">
-                                <group string="Fréquence d'exécution">
+                                <group string="Fréquence">
                                     <field name="auto_frequency"/>
                                     <field name="auto_time"
-                                           string="Heure d'exécution"
                                            invisible="auto_frequency == 'custom' and custom_interval_unit == 'hours'"/>
                                 </group>
                                 <group string="Personnalisation"
                                        invisible="auto_frequency != 'custom'">
-                                    <field name="custom_interval" string="Répéter tous les"/>
-                                    <field name="custom_interval_unit" string="Unité"/>
+                                    <field name="custom_interval"/>
+                                    <field name="custom_interval_unit"/>
                                 </group>
-                                <group string="Période d'activité">
+                                <group string="Période">
                                     <field name="auto_date_start"/>
                                     <field name="auto_date_end"/>
                                 </group>
                             </group>
                         </page>
 
-                        <!-- ONGLET 3 : Informations supplémentaires -->
-                        <page string="Informations supplémentaires">
+                        <!-- Analyse IA - 5 CRITÈRES AVEC POIDS -->
+                        <page string="Analyse IA">
+                            
+                            <!-- TOTAL DES POIDS -->
+                            <group>
+                                <group string="Répartition des poids">
+                                    <field name="poids_total"
+                                           decoration-danger="poids_total != 100"
+                                           decoration-success="poids_total == 100"/>
+                                </group>
+                            </group>
+
+                            <!-- ALERTES DE VALIDATION -->
+                            <div class="alert alert-danger" role="alert"
+                                 invisible="poids_total == 100">
+                                <i class="fa fa-exclamation-triangle" title="Erreur"/> 
+                                <b>Total = <field name="poids_total"/>%</b> — 
+                                Veuillez ajuster pour atteindre exactement 100%
+                            </div>
+
+                            <div class="alert alert-success" role="alert"
+                                 invisible="poids_total != 100">
+                                <i class="fa fa-check-circle" title="OK"/> 
+                                <b>Total = 100%</b> — Répartition validée
+                            </div>
+
+                            <!-- CRITÈRE 1 -->
+                            <group string="1. Savoir-faire / Adéquation métier">
+                                <field name="critere_savoir_desc" colspan="2"/>
+                                <field name="critere_savoir_forte" colspan="2"/>
+                                <field name="critere_savoir_poids"/>
+                            </group>
+                            
+                            <!-- CRITÈRE 2 -->
+                            <group string="2. Potentiel client">
+                                <field name="critere_potentiel_desc" colspan="2"/>
+                                <field name="critere_potentiel_forte" colspan="2"/>
+                                <field name="critere_potentiel_poids"/>
+                            </group>
+                            
+                            <!-- CRITÈRE 3 -->
+                            <group string="3. Chiffre d'affaires">
+                                <field name="critere_ca_desc" colspan="2"/>
+                                <field name="critere_ca_forte" colspan="2"/>
+                                <field name="critere_ca_poids"/>
+                            </group>
+                            
+                            <!-- CRITÈRE 4 -->
+                            <group string="4. Durée du projet / Récurrence">
+                                <field name="critere_duree_desc" colspan="2"/>
+                                <field name="critere_duree_forte" colspan="2"/>
+                                <field name="critere_duree_poids"/>
+                            </group>
+                            
+                            <!-- CRITÈRE 5 -->
+                            <group string="5. Délai de réponse">
+                                <field name="critere_delai_desc" colspan="2"/>
+                                <field name="critere_delai_forte" colspan="2"/>
+                                <field name="critere_delai_poids"/>
+                            </group>
+
+                        </page>
+
+                        <!-- Informations -->
+                        <page string="information supplémentaire">
                             <group>
                                 <group>
                                     <separator string="Notifications" colspan="2"/>
-                                    <!-- Notification Odoo en premier -->
                                     <field name="notify_odoo"/>
-                                    <!-- Notification email + destinataires en dessous -->
                                     <field name="notify_email"/>
                                     <field name="notify_email_ids"
-                                           string="Emails des destinataires"
-                                           widget="many2many_tags"
-                                           invisible="not notify_email"/>
+                                           invisible="not notify_email"
+                                           colspan="2"/>
                                     <separator string="Budget" colspan="2"/>
                                     <field name="budget_min"/>
                                     <field name="budget_max"/>
                                 </group>
                                 <group>
-                                    <separator string="Durée du contrat" colspan="2"/>
+                                    <separator string="Durée" colspan="2"/>
                                     <field name="duration_short"/>
                                     <field name="duration_medium"/>
                                     <field name="duration_long"/>
-                                    <separator string="Type de client" colspan="2"/>
+                                    <separator string="Client" colspan="2"/>
                                     <field name="client_pme"/>
                                     <field name="client_large"/>
                                 </group>
@@ -239,7 +279,7 @@
     </record>
 
     <!-- ============================================== -->
-    <!-- ACTION PRINCIPALE DU MENU VEILLE              -->
+    <!-- ACTION MENU                                   -->
     <!-- ============================================== -->
     <record id="action_opportunity_workflow" model="ir.actions.act_window">
         <field name="name">Veille commerciale</field>

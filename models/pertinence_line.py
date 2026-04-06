@@ -2,40 +2,6 @@
 from odoo import models, fields, api
 
 
-CRITERES_DEFAUT = [
-    {
-        'critere': 'Durée du projet',
-        'poids': 15.0,
-        'aide': '0=<1mois | 5=3-6mois | 10=>12mois'
-    },
-    {
-        'critere': "Chiffre d'affaires estimé",
-        'poids': 20.0,
-        'aide': '0=<10k€ | 5=50-100k€ | 10=>200k€'
-    },
-    {
-        'critere': 'Cohérence savoir-faire',
-        'poids': 25.0,
-        'aide': '0=Hors domaine | 5=Partiel | 10=Cœur de métier'
-    },
-    {
-        'critere': 'Potentiel futur',
-        'poids': 20.0,
-        'aide': '0=Ponctuel | 5=Récurrent possible | 10=Client stratégique'
-    },
-    {
-        'critere': 'Délai de réponse',
-        'poids': 10.0,
-        'aide': '0=<5jours | 5=15jours | 10=>30jours'
-    },
-    {
-        'critere': 'Localisation',
-        'poids': 10.0,
-        'aide': '0=Étranger | 5=Région | 10=Local'
-    },
-]
-
-
 class CrmLeadPertinenceLine(models.Model):
     _name = 'crm.lead.pertinence.line'
     _description = 'Ligne de pertinence'
@@ -46,7 +12,7 @@ class CrmLeadPertinenceLine(models.Model):
     critere = fields.Char(string='Critère', readonly=True)
     poids = fields.Float(string='Poids (%)', digits=(5, 1), readonly=True)
     aide = fields.Char(string='Guide de notation', readonly=True)
-    resultat = fields.Char(string='Résultat', help="Valeur extraite par N8N (ex: 18 mois, 250 000€, Cœur de métier...)")
+    resultat = fields.Char(string='Résultat', help="Valeur extraite par N8N")
     note = fields.Float(string='Note (/10)', digits=(4, 1))
     total = fields.Float(string='Score', compute='_compute_total', store=True, digits=(5, 2))
 
@@ -89,13 +55,80 @@ class CrmLead(models.Model):
                 lead.niveau_pertinence = 'fort'
 
     def _create_pertinence_lines(self):
-        for seq, critere in enumerate(CRITERES_DEFAUT, start=1):
+        """
+        Crée les lignes de pertinence avec les poids depuis la veille (piste.source)
+        si piste_source_id est défini, sinon utilise les valeurs par défaut.
+        """
+        self.ensure_one()
+        
+        # Mapping des critères de piste.source vers crm.lead.pertinence.line
+        CRITERES_MAPPING = [
+            {
+                'critere': 'Savoir-faire / Adéquation métier',
+                'poids_source': 'critere_savoir_poids',
+                'desc_source': 'critere_savoir_desc',
+                'forte_source': 'critere_savoir_forte',
+                'aide_defaut': '0=Hors domaine | 5=Partiel | 10=Cœur de métier'
+            },
+            {
+                'critere': 'Potentiel client / Récurrence',
+                'poids_source': 'critere_potentiel_poids',
+                'desc_source': 'critere_potentiel_desc',
+                'forte_source': 'critere_potentiel_forte',
+                'aide_defaut': '0=Nouveau | 5=Client occasionnel | 10=Client fidèle'
+            },
+            {
+                'critere': "Chiffre d'affaires",
+                'poids_source': 'critere_ca_poids',
+                'desc_source': 'critere_ca_desc',
+                'forte_source': 'critere_ca_forte',
+                'aide_defaut': '0=<10k€ | 5=50-100k€ | 10=>200k€'
+            },
+            {
+                'critere': 'Durée & récurrence du projet',
+                'poids_source': 'critere_duree_poids',
+                'desc_source': 'critere_duree_desc',
+                'forte_source': 'critere_duree_forte',
+                'aide_defaut': 'Durée: 0=<1mois | 5=3-6mois | 10=>12mois — Récurrence: 0=Ponctuel | 5=Récurrent annuel | 10=Récurrent mensuel'
+            },
+            {
+                'critere': 'Délai de réponse',
+                'poids_source': 'critere_delai_poids',
+                'desc_source': 'critere_delai_desc',
+                'forte_source': 'critere_delai_forte',
+                'aide_defaut': '0=<5jours | 5=15jours | 10=>30jours'
+            },
+        ]
+        
+        # Si le lead a une veille associée, on prend les poids de là
+        piste_source = self.piste_source_id
+        
+        for seq, mapping in enumerate(CRITERES_MAPPING, start=1):
+            # Valeurs par défaut
+            poids = 20  # Équipondération par défaut
+            aide = mapping['aide_defaut']
+            
+            # Si veille configurée, on prend les vraies valeurs
+            if piste_source:
+                poids = getattr(piste_source, mapping['poids_source'], 20) or 20
+                desc = getattr(piste_source, mapping['desc_source'], '') or ''
+                forte = getattr(piste_source, mapping['forte_source'], '') or ''
+                
+                # Construit l'aide personnalisée si description ou forte existent
+                if desc or forte:
+                    aide_parts = []
+                    if desc:
+                        aide_parts.append(f"Description: {desc}")
+                    if forte:
+                        aide_parts.append(f"Pertinence forte si: {forte}")
+                    aide = " | ".join(aide_parts)
+            
             self.env['crm.lead.pertinence.line'].create({
                 'lead_id': self.id,
                 'sequence': seq * 10,
-                'critere': critere['critere'],
-                'poids': critere['poids'],
-                'aide': critere['aide'],
+                'critere': mapping['critere'],
+                'poids': poids,
+                'aide': aide,
                 'resultat': '',
                 'note': 0.0,
             })

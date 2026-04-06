@@ -3,7 +3,7 @@
 # Module : crm_menu_override
 # Fichier : controllers/api.py
 # Description : API REST pour la création de leads CRM depuis N8N
-#               et l'attachement automatique de pièces jointes PDF.
+#               avec création d'offres piste.offer et attachement PDF.
 # =============================================================================
 
 from odoo import http  # type: ignore
@@ -56,7 +56,7 @@ class CRMAPI(http.Controller):
 
     # =========================================================================
     # POST /api/crm/lead/bulk_create
-    # Crée des leads CRM depuis N8N et attache le PDF si fourni
+    # Crée des offres piste.offer + leads CRM depuis N8N et attache le PDF
     # =========================================================================
     @http.route(
         '/api/crm/lead/bulk_create',
@@ -68,8 +68,11 @@ class CRMAPI(http.Controller):
     )
     def bulk_create_leads(self, **kw):
         """
-        Reçoit une liste d'offres depuis N8N et crée les leads CRM.
-        Attache automatiquement le PDF si pdf_base64 est fourni dans l'offre.
+        Reçoit une liste d'offres depuis N8N.
+        CRÉE :
+        1. Une offre dans piste.offer (visible dans "Pistes trouvées")
+        2. Un lead dans crm.lead (avec lien vers l'offre)
+        Attache automatiquement le PDF si pdf_base64 est fourni.
 
         JSON attendu :
         {
@@ -80,8 +83,13 @@ class CRMAPI(http.Controller):
                     "email_from": "...",
                     "piste_source_id": 101,
                     "business_unit_id": 5,      ← optionnel
-                    "offre_id": 12,             ← optionnel (NOUVEAU)
-                    "sub_offre_id": 45,         ← optionnel (NOUVEAU)
+                    "offre_id": 12,             ← optionnel
+                    "sub_offre_id": 45,         ← optionnel
+                    "url": "https://...",
+                    "description": "...",
+                    "website": "https://...",
+                    "budget": 50000,
+                    "publication_date": "2026-04-05",
                     "pdf_base64": "JVBERi0...", ← optionnel
                     "pdf_filename": "BOAMP.pdf" ← optionnel
                 }
@@ -109,11 +117,66 @@ class CRMAPI(http.Controller):
 
             for item in offers_list:
                 if not item.get('name'):
-                    _logger.warning("Lead ignoré : name manquant")
+                    _logger.warning("Offre ignorée : name manquant")
                     continue
 
                 try:
-                    # ── Création du contact si nom ou email fourni ──
+                    # ══════════════════════════════════════════════════════
+                    # 1. CRÉER L'OFFRE DANS piste.offer (DIFFÉRÉ)
+                    # ══════════════════════════════════════════════════════
+                    
+                    # Récupérer et valider le source_id
+                    piste_source_id = item.get('piste_source_id') or item.get('source_id')
+                    
+                    if piste_source_id:
+                        try:
+                            source_id_int = int(piste_source_id)
+                            source_exists = env['piste.source'].sudo().browse(source_id_int).exists()
+                            if not source_exists:
+                                _logger.warning("⚠️ source_id=%s introuvable, création sans source", piste_source_id)
+                                piste_source_id = None
+                            else:
+                                piste_source_id = source_id_int
+                        except (ValueError, TypeError):
+                            _logger.warning("⚠️ source_id=%s invalide, création sans source", piste_source_id)
+                            piste_source_id = None
+                    
+                    # Préparer les valeurs de l'offre (lead_id sera ajouté après)
+                    offer_vals = {
+                        'name': item.get('name'),
+                        'source_id': piste_source_id,
+                        'url': item.get('url'),
+                        'description': item.get('description'),
+                        'website': item.get('website') or item.get('platform'),
+                        'budget': item.get('budget'),
+                        'publication_date': item.get('publication_date'),
+                        'status': 'new',
+                        'notes': item.get('notes') or '',
+                    }
+                    
+                    # Vérifier si l'offre existe déjà
+                    if piste_source_id:
+                        existing_offer = env['piste.offer'].sudo().search([
+                            ('name', '=', item.get('name')),
+                            ('source_id', '=', piste_source_id)
+                        ], limit=1)
+                    else:
+                        existing_offer = env['piste.offer'].sudo().search([
+                            ('name', '=', item.get('name'))
+                        ], limit=1)
+                    
+                    if existing_offer:
+                        offer = existing_offer
+                        _logger.info("✓ Offre existante : ID %s", offer.id)
+                    else:
+                        # Créer l'offre sans lead_id pour l'instant
+                        offer = env['piste.offer'].sudo().create(offer_vals)
+                        _logger.info("✅ Offre créée : ID %s - %s", offer.id, offer.name)
+
+                    # ══════════════════════════════════════════════════════
+                    # 2. CRÉER LE CONTACT SI FOURNI
+                    # ══════════════════════════════════════════════════════
+                    
                     contact_partner = None
                     if item.get('contact_name') or item.get('email_from'):
                         contact_vals = {
@@ -126,11 +189,15 @@ class CRMAPI(http.Controller):
                             'type': 'contact',
                         }
                         contact_partner = env['res.partner'].sudo().create(contact_vals)
-                        _logger.info("Contact créé : ID %s - %s", contact_partner.id, contact_partner.name)
+                        _logger.info("✅ Contact créé : ID %s - %s", contact_partner.id, contact_partner.name)
 
-                    # ── Création du lead CRM ──
+                    # ══════════════════════════════════════════════════════
+                    # 3. CRÉER LE LEAD CRM
+                    # ══════════════════════════════════════════════════════
+                    
                     lead_vals = {
                         'name': item.get('name'),
+                        'type': 'lead',
                         'contact_name': item.get('contact_name'),
                         'email_from': item.get('email_from'),
                         'phone': item.get('phone'),
@@ -149,7 +216,6 @@ class CRMAPI(http.Controller):
                         'contact_partner_id': contact_partner.id if contact_partner else item.get('contact_partner_id'),
                         'country_id': item.get('country_id'),
                         'state_id': item.get('state_id'),
-                        # ✅ CHAMPS OFFRE / SOUS-OFFRE / BU
                         'business_unit_id': item.get('business_unit_id'),
                         'offre_id': item.get('offre_id'),
                         'sub_offre_id': item.get('sub_offre_id'),
@@ -159,23 +225,72 @@ class CRMAPI(http.Controller):
                         'description': item.get('description'),
                         'Mode_de_livraison': item.get('Mode_de_livraison'),
                         'source_id': item.get('source_id'),
-                        # ✅ Lien vers la veille commerciale qui a généré ce lead
-                        'piste_source_id': item.get('piste_source_id'),
+                        'piste_source_id': piste_source_id,
                     }
 
                     lead = env['crm.lead'].sudo().create(lead_vals)
-                    _logger.info("Lead créé : ID %s - %s", lead.id, lead.name)
+                    _logger.info("✅ Lead créé : ID %s - %s", lead.id, lead.name)
+                    
+                    # ══════════════════════════════════════════════════════
+                    # 4. LIER L'OFFRE AU LEAD (CORRIGÉ - SQL DIRECT)
+                    # ══════════════════════════════════════════════════════
+                    
+                    if offer and lead:
+                        try:
+                            # Forcer le flush pour s'assurer que le lead a un ID valide
+                            lead.flush_recordset()
+                            
+                            # Méthode 1: Utiliser write avec flush explicite
+                            offer.sudo().write({'lead_id': lead.id})
+                            offer.flush_recordset()  # Force l'écriture en DB
+                            
+                            # Vérification par relecture directe en base
+                            env.cr.execute(
+                                "SELECT lead_id FROM piste_offer WHERE id = %s", 
+                                (offer.id,)
+                            )
+                            result = env.cr.fetchone()
+                            db_lead_id = result[0] if result else None
+                            
+                            if db_lead_id == lead.id:
+                                _logger.info("✅ Offre ID %s liée au Lead ID %s (vérifié en DB)", 
+                                            offer.id, lead.id)
+                            else:
+                                _logger.error("❌ Échec liaison: DB a lead_id=%s, attendu=%s", 
+                                             db_lead_id, lead.id)
+                                # Tentative avec SQL direct si write échoue
+                                env.cr.execute(
+                                    "UPDATE piste_offer SET lead_id = %s WHERE id = %s",
+                                    (lead.id, offer.id)
+                                )
+                                _logger.info("✅ Liaison forcée par SQL direct: offre=%s, lead=%s", 
+                                            offer.id, lead.id)
+                                
+                        except Exception as link_error:
+                            _logger.error("❌ Erreur liaison offre-lead: %s", str(link_error))
+                            # Fallback SQL
+                            try:
+                                env.cr.execute(
+                                    "UPDATE piste_offer SET lead_id = %s WHERE id = %s",
+                                    (lead.id, offer.id)
+                                )
+                                _logger.info("✅ Liaison de secours par SQL: offre=%s, lead=%s", 
+                                           offer.id, lead.id)
+                            except Exception as sql_error:
+                                _logger.error("❌ Échec total liaison: %s", str(sql_error))
 
-                    # ✅ Mise à jour pertinence si N8N envoie les notes
+                    # ══════════════════════════════════════════════════════
+                    # 5. METTRE À JOUR PERTINENCE SI FOURNIE
+                    # ══════════════════════════════════════════════════════
+                    
                     pertinence = item.get('pertinence')
                     if pertinence:
                         mapping = [
-                            ('Durée du projet',           'duree_resultat',        'duree_note'),
-                            ("Chiffre d'affaires estimé", 'ca_resultat',           'ca_note'),
-                            ('Cohérence savoir-faire',    'savoir_faire_resultat', 'savoir_faire_note'),
-                            ('Potentiel futur',           'potentiel_resultat',    'potentiel_note'),
-                            ('Délai de réponse',          'delai_resultat',        'delai_note'),
-                            ('Localisation',              'localisation_resultat', 'localisation_note'),
+                            ('Savoir-faire / Adéquation métier', 'savoir_faire_resultat', 'savoir_faire_note'),
+                            ('Potentiel client / Récurrence', 'potentiel_client_resultat', 'potentiel_client_note'),
+                            ("Chiffre d'affaires", 'chiffre_affaires_resultat', 'chiffre_affaires_note'),
+                            ('Durée & récurrence du projet', 'duree_recurence_resultat', 'duree_recurence_note'),
+                            ('Délai de réponse', 'delai_reponse_resultat', 'delai_reponse_note'),
                         ]
                         for critere_name, res_key, note_key in mapping:
                             line = env['crm.lead.pertinence.line'].sudo().search([
@@ -188,24 +303,10 @@ class CRMAPI(http.Controller):
                                     'note': float(pertinence.get(note_key, 0) or 0),
                                 })
 
-
-
-
-
+                    # ══════════════════════════════════════════════════════
+                    # 6. ATTACHER LE PDF SI FOURNI
+                    # ══════════════════════════════════════════════════════
                     
-
-
-
-
-
-
-
-
-
-
-
-
-                    # ── Attachement PDF si fourni et valide ──
                     pdf_base64 = item.get('pdf_base64')
                     pdf_filename = item.get('pdf_filename', 'document.pdf')
 
@@ -221,48 +322,48 @@ class CRMAPI(http.Controller):
                                 'mimetype': 'application/pdf',
                             })
                             pdf_attached = True
-                            _logger.info("PDF '%s' attaché au lead ID %s", pdf_filename, lead.id)
+                            _logger.info("✅ PDF '%s' attaché au lead ID %s", pdf_filename, lead.id)
                         except Exception as pdf_error:
-                            _logger.warning("Impossible d'attacher le PDF au lead %s : %s", lead.id, str(pdf_error))
+                            _logger.warning("⚠️ Impossible d'attacher le PDF : %s", str(pdf_error))
 
+                    # ══════════════════════════════════════════════════════
+                    # 7. PRÉPARER LA RÉPONSE
+                    # ══════════════════════════════════════════════════════
+                    
                     created_leads.append({
                         'lead_id': lead.id,
+                        'offer_id': offer.id,
                         'name': lead.name,
                         'contact_name': lead.contact_name,
                         'contact_id': contact_partner.id if contact_partner else None,
                         'Mode_de_livraison': lead.Mode_de_livraison,
-                        # ✅ RETOURNE LES CHAMPS OFFRE/SOUS-OFFRE/BU
                         'business_unit_id': lead.business_unit_id.id if lead.business_unit_id else None,
                         'business_unit_name': lead.business_unit_id.name if lead.business_unit_id else None,
                         'offre_id': lead.offre_id.id if lead.offre_id else None,
                         'offre_name': lead.offre_id.name if lead.offre_id else None,
                         'sub_offre_id': lead.sub_offre_id.id if lead.sub_offre_id else None,
                         'sub_offre_name': lead.sub_offre_id.name if lead.sub_offre_id else None,
-                        'piste_source_id': lead.piste_source_id.id if lead.piste_source_id else None,
+                        'piste_source_id': piste_source_id,
                         'pdf_attached': pdf_attached,
                     })
 
                 except Exception as lead_error:
-                    _logger.exception("Erreur création lead : %s", lead_error)
-                    return request.make_response(
-                        json.dumps({'success': False, 'error': f"Erreur création lead : {str(lead_error)}"}),
-                        headers={'Content-Type': 'application/json'},
-                        status=500
-                    )
+                    _logger.exception("❌ Erreur création lead/offre : %s", lead_error)
+                    continue  # Passe à l'offre suivante au lieu de tout arrêter
 
             return request.make_response(
                 json.dumps({
                     'success': True,
                     'created_count': len(created_leads),
                     'leads': created_leads,
-                    'message': f'{len(created_leads)} lead(s) créé(s) avec succès'
+                    'message': f'{len(created_leads)} lead(s) et offre(s) créé(s) avec succès'
                 }),
                 headers={'Content-Type': 'application/json'},
                 status=201
             )
 
         except Exception as e:
-            _logger.exception("Erreur bulk_create_leads")
+            _logger.exception("❌ Erreur bulk_create_leads")
             return request.make_response(
                 json.dumps({'success': False, 'error': str(e)}),
                 headers={'Content-Type': 'application/json'},
@@ -385,7 +486,6 @@ class CRMAPI(http.Controller):
                     'expected_revenue': lead.expected_revenue,
                     'user_id': lead.user_id.id if lead.user_id else None,
                     'Mode_de_livraison': lead.Mode_de_livraison,
-                    # ✅ AJOUT DES CHAMPS OFFRE/SOUS-OFFRE/BU DANS LA RÉPONSE
                     'business_unit_id': lead.business_unit_id.id if lead.business_unit_id else None,
                     'business_unit_name': lead.business_unit_id.name if lead.business_unit_id else None,
                     'offre_id': lead.offre_id.id if lead.offre_id else None,
@@ -394,13 +494,6 @@ class CRMAPI(http.Controller):
                     'sub_offre_name': lead.sub_offre_id.name if lead.sub_offre_id else None,
                     'piste_source_id': lead.piste_source_id.id if lead.piste_source_id else None,
                     'create_date': lead.create_date.isoformat() if lead.create_date else None,
-                    
-
-
-
-
-
-
                 })
 
             return request.make_response(
