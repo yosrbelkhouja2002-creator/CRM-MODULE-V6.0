@@ -12,6 +12,7 @@ import requests
 import json
 import logging
 from datetime import datetime, date, timedelta
+import markupsafe
 
 _logger = logging.getLogger(__name__)
 
@@ -214,8 +215,8 @@ class PisteSource(models.Model):
             ])
             if total != 100:
                 raise ValidationError(
-                    f"❌ Le total des poids doit être exactement 100%.\n"
-                    f"   Actuellement : {total}%\n\n"
+                    f"Le total des poids doit être exactement 100%.\n"
+                    f"Actuellement : {total}%\n\n"
                     f"Veuillez ajuster vos 5 critères."
                 )
 
@@ -224,17 +225,17 @@ class PisteSource(models.Model):
     # =========================================================================
     automation_type = fields.Selection([('manual', 'Manuel'), ('auto', 'Automatique')],
                                        string="Planification", required=True, default='manual')
-    
+
     auto_frequency = fields.Selection([
         ('daily', 'Chaque jour'), ('weekly', 'Chaque semaine'), ('custom', 'Personnalisée'),
     ], string="Fréquence")
-    
+
     auto_date_start = fields.Date(string="Date de début")
     auto_date_end = fields.Date(string="Date de fin")
-    auto_time = fields.Selection([  # liste complète des heures
+    auto_time = fields.Selection([
         (f'{h:02d}:00', f'{h:02d}:00') for h in range(24)
     ], string="Heure", default='08:00')
-    
+
     custom_interval = fields.Integer(string="Intervalle", default=1)
     custom_interval_unit = fields.Selection([
         ('hours', 'Heure(s)'), ('days', 'Jour(s)'), ('weeks', 'Semaine(s)'), ('months', 'Mois'),
@@ -329,11 +330,34 @@ class PisteSource(models.Model):
             self.env['ir.cron'].sudo().create(cron_vals)
 
     def _delete_cron(self):
-        """Désactive le cron au lieu de le supprimer (évite les erreurs de verrou)"""
+        """
+        Désactive le cron via SQL direct.
+        Contourne le verrou Odoo qui bloque write() pendant l'exécution du cron.
+        """
         cron = self.env['ir.cron'].sudo().search([('name', '=', self._cron_name())], limit=1)
         if cron:
-            cron.sudo().write({'active': False})
-            _logger.info("✅ Cron désactivé : %s", self._cron_name())
+            try:
+                self.env.cr.execute(
+                    "UPDATE ir_cron SET active = false WHERE id = %s",
+                    (cron.id,)
+                )
+                _logger.info("Cron désactivé (SQL) : %s", self._cron_name())
+            except Exception as e:
+                _logger.warning("Impossible de désactiver le cron '%s' : %s", self._cron_name(), str(e))
+
+    def _disable_orphan_cron(self):
+        """
+        Désactive les crons orphelins pointant vers cet ID via SQL direct.
+        Appelé quand self n'existe plus en base.
+        """
+        try:
+            self.env.cr.execute(
+                "UPDATE ir_cron SET active = false WHERE code LIKE %s",
+                (f"%model.browse({self.id})%",)
+            )
+            _logger.info("Cron(s) orphelin(s) désactivé(s) pour piste.source ID %s", self.id)
+        except Exception as e:
+            _logger.warning("Impossible de désactiver les crons orphelins ID %s : %s", self.id, str(e))
 
     # =========================================================================
     # OVERRIDES
@@ -359,23 +383,106 @@ class PisteSource(models.Model):
         return super().unlink()
 
     # =========================================================================
-    # SCRAPING N8N (CORRIGÉ)
+    # SCRAPING N8N
     # =========================================================================
     def action_run_scrape(self):
-        """Envoie la configuration à N8N avec critères IA"""
+        """Envoie la configuration à N8N avec critères IA et notifications complètes."""
         self.ensure_one()
 
-        if self.scrape_in_progress:
-            _logger.warning("⚠️ Scraping déjà en cours pour %s", self.name)
+        # GARDE 1 : l'enregistrement existe-t-il encore ?
+        if not self.exists():
+            _logger.warning("piste.source(%s) n'existe plus en base — cron orphelin désactivé", self.id)
+            self._disable_orphan_cron()
             return
 
+        # GARDE 2 : scraping déjà en cours
+        if self.scrape_in_progress:
+            _logger.warning("Scraping déjà en cours pour %s", self.name)
+            if self.notify_odoo:
+                self.message_post(
+                    body=markupsafe.Markup(
+                        "<b>Scraping ignoré</b> — Un scraping est déjà en cours pour cette veille.<br/>"
+                        "Veuillez attendre la fin avant de relancer."
+                    ),
+                    message_type='notification',
+                    subtype_xmlid='mail.mt_note',
+                )
+            return
+
+        # GARDE 3 : date de fin dépassée
         if self.automation_type == 'auto' and self.auto_date_end and date.today() > self.auto_date_end:
+            _logger.info("Date de fin dépassée pour '%s' — cron désactivé", self.name)
+            if self.notify_odoo:
+                self.message_post(
+                    body=markupsafe.Markup(
+                        f"<b>Veille terminée</b> — La date de fin "
+                        f"(<b>{self.auto_date_end}</b>) est dépassée.<br/>"
+                        f"La planification automatique a été désactivée."
+                    ),
+                    message_type='notification',
+                    subtype_xmlid='mail.mt_note',
+                )
             self._delete_cron()
             return
 
-        n8n_webhook_url = "http://localhost:5678/webhook-test/piste-run"  # ← change en prod
+        # GARDE 4 : aucun mot-clé configuré
+        if not self.keywords_required_ids:
+            _logger.error("Aucun mot-clé pour la veille '%s'", self.name)
+            if self.notify_odoo:
+                self.message_post(
+                    body=markupsafe.Markup(
+                        "<b>Scraping annulé</b> — Aucun mot-clé configuré sur cette veille.<br/>"
+                        "Ajoutez au moins un mot-clé dans l'onglet <b>Mots-clés</b> pour démarrer."
+                    ),
+                    message_type='notification',
+                    subtype_xmlid='mail.mt_note',
+                )
+            return
 
-        # Préparation des critères IA
+        # GARDE 5 : aucune plateforme sélectionnée
+        plateformes_actives = [
+            label for label, actif in {
+                'Achatpublic': self.platform_achatpublic,
+                'France Marchés': self.platform_francemarches,
+                'AW Solutions': self.platform_awsolutions,
+                'DoubleTrade': self.platform_doubletrade,
+                'MarchesPublics': self.platform_marchespublics,
+                'Marchés Sécurisés': self.platform_marchessecurise,
+                'BOAMP': self.platform_boamp,
+            }.items() if actif
+        ]
+
+        if not plateformes_actives:
+            _logger.warning("Aucune plateforme activée pour '%s'", self.name)
+            if self.notify_odoo:
+                self.message_post(
+                    body=markupsafe.Markup(
+                        "<b>Scraping annulé</b> — Aucune plateforme sélectionnée.<br/>"
+                        "Activez au moins une plateforme dans l'onglet <b>Plateformes</b>."
+                    ),
+                    message_type='notification',
+                    subtype_xmlid='mail.mt_note',
+                )
+            return
+
+        # N8N webhook URL
+        n8n_webhook_url = "http://localhost:5678/webhook-test/piste-run"  # changer en prod
+
+        # Message de démarrage
+        mots_cles = ', '.join([kw.name for kw in self.keywords_required_ids])
+
+        if self.notify_odoo:
+            self.message_post(
+                body=markupsafe.Markup(
+                    f"<b>Scraping démarré</b><br/>"
+                    f"Mots-clés : <b>{mots_cles}</b><br/>"
+                    f"Plateformes : <b>{', '.join(plateformes_actives)}</b>"
+                ),
+                message_type='notification',
+                subtype_xmlid='mail.mt_note',
+            )
+
+        # Préparation du payload
         poids_list = [
             self.critere_savoir_poids or 0,
             self.critere_potentiel_poids or 0,
@@ -392,16 +499,16 @@ class PisteSource(models.Model):
             (5, 'Délai de réponse', self.critere_delai_desc, self.critere_delai_forte, poids_list[4]),
         ]
 
-        criteres_ia = []
-        for num, nom, desc, forte, poids in criteres_config:
-            if desc or forte:
-                criteres_ia.append({
-                    'numero': num,
-                    'nom': nom,
-                    'description': desc or '',
-                    'pertinence_forte_si': forte or '',
-                    'poids_pourcent': poids,
-                })
+        criteres_ia = [
+            {
+                'numero': num,
+                'nom': nom,
+                'description': desc or '',
+                'pertinence_forte_si': forte or '',
+                'poids_pourcent': poids,
+            }
+            for num, nom, desc, forte, poids in criteres_config if desc or forte
+        ]
 
         payload = {
             'id': self.id,
@@ -455,40 +562,203 @@ class PisteSource(models.Model):
             response = requests.post(
                 n8n_webhook_url,
                 headers={'Content-Type': 'application/json'},
-                json=payload,          # ← recommandé au lieu de data + json.dumps
+                json=payload,
                 timeout=15
             )
 
-            _logger.info("✅ Scrape envoyé : %s → HTTP %s | Response: %s",
-                         self.name, response.status_code, response.text[:500])
+            _logger.info(
+                "Scrape envoyé : %s → HTTP %s | Response: %s",
+                self.name, response.status_code, response.text[:500]
+            )
 
+            # ERREUR HTTP retournée par N8N
             if response.status_code >= 400:
-                _logger.warning("⚠️ N8N a renvoyé une erreur (HTTP %s): %s",
-                                response.status_code, response.text)
+                error_detail = response.text[:500] if response.text else "Aucun détail"
+                _logger.warning(
+                    "N8N a renvoyé une erreur (HTTP %s): %s",
+                    response.status_code, error_detail
+                )
+                if self.notify_odoo:
+                    self.message_post(
+                        body=markupsafe.Markup(
+                            f"<b>Erreur N8N</b> (HTTP {response.status_code})<br/>"
+                            f"<pre>{error_detail}</pre><br/>"
+                            f"<i>Vérifiez que le workflow N8N est bien en mode 'Listen for test event' et que l'URL est correcte.</i>"
+                        ),
+                        message_type='notification',
+                        subtype_xmlid='mail.mt_note',
+                    )
+                return
 
-            # Notifications
+            # VÉRIFIER SI LA RÉPONSE EST VIDE
+            if not response.text or response.text.strip() == '':
+                _logger.warning("Réponse N8N vide")
+                if self.notify_odoo:
+                    self.message_post(
+                        body=markupsafe.Markup(
+                            "<b>Réponse N8N vide</b><br/>"
+                            "Le webhook a répondu mais sans contenu. Vérifiez votre workflow N8N."
+                        ),
+                        message_type='notification',
+                        subtype_xmlid='mail.mt_note',
+                    )
+                return
+
+            # ANALYSER LA RÉPONSE JSON
+            try:
+                resp_json = response.json()
+            except json.JSONDecodeError as e:
+                _logger.error("Réponse N8N non-JSON : %s", response.text[:500])
+                if self.notify_odoo:
+                    self.message_post(
+                        body=markupsafe.Markup(
+                            f"<b>Erreur de format</b><br/>"
+                            f"N8N n'a pas renvoyé une réponse JSON valide.<br/>"
+                            f"<pre>{response.text[:500]}</pre>"
+                        ),
+                        message_type='notification',
+                        subtype_xmlid='mail.mt_note',
+                    )
+                return
+
+            # VÉRIFIER SI N8N SIGNALE UNE ERREUR INTERNE
+            if isinstance(resp_json, dict) and resp_json.get('error'):
+                error_msg = resp_json.get('message', resp_json.get('error', 'Erreur inconnue'))
+                _logger.error("N8N a signalé une erreur : %s", error_msg)
+                if self.notify_odoo:
+                    self.message_post(
+                        body=markupsafe.Markup(
+                            f"<b>Erreur dans le workflow N8N</b><br/>"
+                            f"{error_msg}"
+                        ),
+                        message_type='notification',
+                        subtype_xmlid='mail.mt_note',
+                    )
+                return
+
+            # VÉRIFIER LES DONNÉES REÇUES
+            nb_offres = resp_json.get('total_found', resp_json.get('count', None))
+            nb_filtrees = resp_json.get('filtered_out', resp_json.get('filtered_count', None))
+            nb_leads = resp_json.get('leads_created', resp_json.get('created_count', None))
+
+            # SI N8N RÉPOND "Workflow was started" = succès asynchrone
+            if resp_json.get('message') == 'Workflow was started':
+                if self.notify_odoo:
+                    self.message_post(
+                        body=markupsafe.Markup(
+                            f"<b>Scraping lancé avec succès</b><br/>"
+                            f"Le workflow N8N a démarré en arrière-plan.<br/>"
+                            f"Mots-clés : <b>{mots_cles}</b><br/>"
+                            f"Plateformes : <b>{', '.join(plateformes_actives)}</b><br/>"
+                            f"<i>Les résultats seront disponibles une fois le traitement terminé.</i>"
+                        ),
+                        message_type='notification',
+                        subtype_xmlid='mail.mt_note',
+                    )
+                return  # Sortir ici, le workflow tourne en arrière-plan
+
+            # Si données manquantes mais pas "Workflow was started"
+            if nb_offres is None and nb_leads is None:
+                _logger.warning("Réponse N8N incomplète : %s", resp_json)
+                if self.notify_odoo:
+                    self.message_post(
+                        body=markupsafe.Markup(
+                            "<b>Réponse N8N incomplète</b><br/>"
+                            "Le workflow n'a pas renvoyé les statistiques attendues.<br/>"
+                            f"<pre>{json.dumps(resp_json, indent=2)[:500]}</pre>"
+                        ),
+                        message_type='notification',
+                        subtype_xmlid='mail.mt_note',
+                    )
+                return
+
+            # SUCCÈS : Afficher les résultats
             if self.notify_odoo:
-                mots_cles = ', '.join([kw.name for kw in self.keywords_required_ids])
                 self.message_post(
-                    body=f"✅ Veille <b>{self.name}</b> lancée.<br/>Mots-clés: {mots_cles}",
+                    body=markupsafe.Markup(
+                        f"<b>Scraping terminé avec succès</b><br/>"
+                        f"Offres trouvées : <b>{nb_offres if nb_offres is not None else 'N/A'}</b><br/>"
+                        f"Filtrées (hors critères) : <b>{nb_filtrees if nb_filtrees is not None else 'N/A'}</b><br/>"
+                        f"Leads créés dans le CRM : <b>{nb_leads if nb_leads is not None else 'N/A'}</b>"
+                    ),
                     message_type='notification',
                     subtype_xmlid='mail.mt_note',
                 )
 
+            # Avertissement si 0 leads créés
+            if nb_leads == 0:
+                if self.notify_odoo:
+                    self.message_post(
+                        body=markupsafe.Markup(
+                            f"<b>Aucune offre ne correspond aux mots-clés</b> : {mots_cles}<br/>"
+                            f"Vérifiez vos critères ou élargissez vos mots-clés."
+                        ),
+                        message_type='notification',
+                        subtype_xmlid='mail.mt_note',
+                    )
+
+            # Notification email
             if self.notify_email and self.notify_email_ids:
                 emails = ','.join(self.notify_email_ids.mapped('email'))
                 self.env['mail.mail'].sudo().create({
-                    'subject': f'[Veille] {self.name} – lancée',
-                    'body_html': f'<p>Veille <b>{self.name}</b> lancée.</p>',
+                    'subject': f'[Veille] {self.name} – terminée',
+                    'body_html': (
+                        f'<p>La veille <b>{self.name}</b> s\'est terminée avec succès.</p>'
+                        f'<p>Mots-clés : {mots_cles}</p>'
+                        f'<p>Plateformes : {", ".join(plateformes_actives)}</p>'
+                        f'<p>Résultats : {nb_offres} offres trouvées, {nb_leads} leads créés</p>'
+                    ),
                     'email_to': emails,
                 }).send()
 
+        # GESTION DES EXCEPTIONS
+        except requests.exceptions.ConnectionError:
+            _logger.error("Connexion refusée par N8N pour '%s' — URL : %s", self.name, n8n_webhook_url)
+            if self.notify_odoo:
+                self.message_post(
+                    body=markupsafe.Markup(
+                        f"<b>Impossible de contacter N8N</b><br/>"
+                        f"Vérifiez que N8N est bien démarré à l'adresse :<br/>"
+                        f"<code>{n8n_webhook_url}</code>"
+                    ),
+                    message_type='notification',
+                    subtype_xmlid='mail.mt_note',
+                )
+            raise ValidationError(f"Impossible de contacter N8N (connexion refusée) — {n8n_webhook_url}")
+
+        except requests.exceptions.Timeout:
+            _logger.error("Timeout N8N (15s) pour '%s'", self.name)
+            if self.notify_odoo:
+                self.message_post(
+                    body=markupsafe.Markup(
+                        "<b>Timeout N8N</b> — Le workflow n'a pas répondu dans les 15 secondes.<br/>"
+                        "Le scraping a peut-être quand même démarré côté N8N."
+                    ),
+                    message_type='notification',
+                    subtype_xmlid='mail.mt_note',
+                )
+            raise ValidationError("Timeout : N8N n'a pas répondu à temps (15s).")
+
         except requests.exceptions.RequestException as e:
-            _logger.error("❌ Erreur connexion N8N pour '%s' : %s", self.name, str(e))
+            _logger.error("Erreur réseau N8N pour '%s' : %s", self.name, str(e))
+            if self.notify_odoo:
+                self.message_post(
+                    body=markupsafe.Markup(f"<b>Erreur réseau</b> : {str(e)}"),
+                    message_type='notification',
+                    subtype_xmlid='mail.mt_note',
+                )
             raise ValidationError(f"Impossible de contacter N8N : {str(e)}")
+
         except Exception as e:
-            _logger.error("❌ Erreur inattendue lors du scrape '%s' : %s", self.name, str(e))
+            _logger.error("Erreur inattendue lors du scrape '%s' : %s", self.name, str(e))
+            if self.notify_odoo:
+                self.message_post(
+                    body=markupsafe.Markup(f"<b>Erreur inattendue</b> : {str(e)}"),
+                    message_type='notification',
+                    subtype_xmlid='mail.mt_note',
+                )
             raise ValidationError(f"Erreur inattendue : {str(e)}")
+
         finally:
             self.sudo().write({'scrape_in_progress': False})
 

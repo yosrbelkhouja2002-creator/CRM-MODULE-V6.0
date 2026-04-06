@@ -512,4 +512,4 @@ class CRMAPI(http.Controller):
                 json.dumps({'success': False, 'error': str(e)}),
                 headers={'Content-Type': 'application/json'},
                 status=500
-            )
+            ) 
